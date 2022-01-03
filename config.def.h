@@ -49,7 +49,7 @@
 #define VSPLIT KEY(L'v')
 
 /* The delete terminal key. */
-#define DELETE_NODE KEY(L'w')
+#define DELETE_NODE KEY(L'q')
 
 #define EXPAND_NODE KEY(L'x')
 

@@ -46,6 +46,11 @@ typedef enum{
     VIEW
 } Node;
 
+typedef enum{
+    ROOT,
+    CHILD
+} NodeType;
+
 typedef struct SCRN SCRN;
 struct SCRN{
     int sy, sx, vis, tos, off;
@@ -65,6 +70,8 @@ struct NODE{
     SCRN pri, alt, *s;
     wchar_t *g0, *g1, *g2, *g3, *gc, *gs, *sgc, *sgs;
     VTPARSER vp;
+    int refcnt;
+    NodeType type;
 };
 
 /*** GLOBALS AND PROTOTYPES */
@@ -727,6 +734,8 @@ newnode(Node t, NODE *p, int y, int x, int h, int w) /* Create a new node. */
     n->w = w;
     n->tabs = tabs;
     n->ntabs = w;
+    n->refcnt = 1;
+    n->type = CHILD;
 
     return n;
 }
@@ -735,6 +744,8 @@ static void
 freenode(NODE *n, bool recurse) /* Free a node. */
 {
     if (n){
+        n->refcnt--;
+        if (n->refcnt > 0) return;
         if (lastfocused == n)
             lastfocused = NULL;
         if (n->pri.win)
@@ -895,14 +906,77 @@ removechild(NODE *p, const NODE *c) /* Replace p with other child. */
 }
 
 static void
-deletenode(NODE *n) /* Delete a node. */
+deletenode2(NODE *n) /* Delete a node. */
 {
+
     if (!n || !n->p)
         quit(EXIT_SUCCESS, NULL);
     if (n == focused)
         focus(n->p->c1 == n? n->p->c2 : n->p->c1);
     removechild(n->p, n);
     freenode(n, true);
+}
+
+static void
+root_delete(NODE *n)
+{
+    for ( int i =0 ; i < PANE_MAX ; i++) {
+        if (t_root[i] == n)
+	{
+	    t_root[i] = NULL;
+	    t_root_enable[i] = 0;
+	    return;
+	}
+    }
+}
+
+static bool
+root_empty()
+{
+    int cnt = 0;
+    for ( int i =0 ; i < PANE_MAX ; i++) {
+	{
+	    if (t_root_enable[i] == 1)
+	    {
+		    cnt++;
+	    }
+	}
+    }
+
+    if ( cnt > 0 ) {
+	    return false;
+    } else {
+	    return true;
+    }
+}
+
+static void
+deletenode(NODE *n) /* Delete a node. */
+{
+    if (n->type == ROOT)
+    {
+         //if (!n || !n->p)
+         //    quit(EXIT_SUCCESS, NULL);
+         //if (n == focused)
+         //    focus(n->p->c1 == n? n->p->c2 : n->p->c1);
+         //removechild(n->p, n);
+         //freenode(n, true);
+	 root_delete(n);
+	 if (root_empty()) {
+             quit(EXIT_SUCCESS, NULL);
+	 } else {
+            t_root_change = 1;
+            t_root_change_type = NEXT;
+	 }
+
+    } else {
+         //if (!n || !n->p)
+         //    quit(EXIT_SUCCESS, NULL);
+         if (n == focused)
+             focus(n->p->c1 == n? n->p->c2 : n->p->c1);
+         removechild(n->p, n);
+         freenode(n, true);
+    }
 }
 
 static void
@@ -1073,6 +1147,7 @@ next_pane()
 static void
 expandnode(NODE *n) /* Expand a node. */
 {
+  n->refcnt++;
   t_root_change = 1;
   t_root_change_type = EXPAND;
   t_expand_node = n;
@@ -1264,6 +1339,7 @@ main(int argc, char **argv)
     t_root[t_root_index] = newview(NULL, 0, 0, LINES, COLS);
     if (!t_root[t_root_index])
             quit(EXIT_FAILURE, "could not open root window");
+    t_root[t_root_index]->type = ROOT;
     t_root_enable[t_root_index] = 1;
     focus(t_root[t_root_index]);
     draw(t_root[t_root_index]);
@@ -1272,12 +1348,18 @@ main(int argc, char **argv)
         run();
 	t_root_change = 0;
 	if (t_root_change_type == CREATE) {
+		int old_index = t_root_index;
 		if (set_create_root_index())
 		{
 		   //printf("create index:%d\n", t_root_index);
                    t_root[t_root_index] = newview(NULL, 0, 0, LINES, COLS);
                    if (!t_root[t_root_index])
-                           quit(EXIT_FAILURE, "could not open root window");
+		   {  
+		      t_root_index = old_index;
+                      continue;
+
+		   }
+                   t_root[t_root_index]->type = ROOT;
                    t_root_enable[t_root_index] = 1;
                    focus(t_root[t_root_index]);
                    draw(t_root[t_root_index]);
@@ -1291,12 +1373,17 @@ main(int argc, char **argv)
                 draw(t_root[t_root_index]);
 
 	} else if (t_root_change_type == EXPAND) {
+		int old_index = t_root_index;
 		if (set_create_root_index())
 		{
                    //t_root[t_root_index] = newview(NULL, 0, 0, LINES, COLS);
                    t_root[t_root_index] = t_expand_node;
                    if (!t_root[t_root_index])
-                           quit(EXIT_FAILURE, "could not open root window");
+		   {  
+		      t_root_index = old_index;
+                      continue;
+		   }
+                   t_root[t_root_index]->type = ROOT;
                    t_root_enable[t_root_index] = 1;
 		   reshape(t_root[t_root_index], 0, 0, LINES, COLS);
                    focus(t_root[t_root_index]);
