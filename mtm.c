@@ -887,7 +887,7 @@ replacechild(NODE *n, NODE *c1, NODE *c2) /* Replace c1 of n with c2. */
     c2->p = n;
     if (!n){
         t_root[t_root_index] = c2;
-        reshape(c2, 0, 0, LINES, COLS);
+        reshape(c2, 0, 0, LINES-1, COLS);
     } else if (n->c1 == c1)
         n->c1 = c2;
     else if (n->c2 == c1)
@@ -1169,7 +1169,7 @@ handlechar(int r, int k) /* Handle a single input character. */
         if (s == cmd && (t)) { a ; cmd = false; return true; }
 
     DO(cmd,   KERR(k),             return false)
-    DO(cmd,   CODE(KEY_RESIZE),    reshape(t_root[t_root_index], 0, 0, LINES, COLS); SB)
+    DO(cmd,   CODE(KEY_RESIZE),    reshape(t_root[t_root_index], 0, 0, LINES-1, COLS); SB)
     DO(false, KEY(commandkey),     return cmd = true)
     DO(false, KEY(0),              SENDN(n, "\000", 1); SB)
     DO(false, KEY(L'\n'),          SEND(n, "\n"); SB)
@@ -1227,6 +1227,34 @@ handlechar(int r, int k) /* Handle a single input character. */
 }
 
 static void
+status_bar()
+{
+  char cur_set[256];
+  char status[256];
+
+   //const char *cur_pos_save    = "\033[s";
+  const char *cur_pos_save    = "\0337";
+  //const char *cur_top_left    = "\033[0;0H";
+  const char *clear_line      = "\033[2K";
+  //const char *cur_pos_restore = "\033[u";
+  const char *cur_pos_restore = "\0338";
+
+  // https://www.mm2d.net/main/prog/c/console-02.html
+  sprintf(cur_set ,"\033[%d;%dH", LINES, 0 );
+  sprintf(status  ,"\033[30m\033[43m%-30s%30s\033[0m","LEFT TEST  BAR", "RIGHT" );
+  //sprintf(status  ,"TEST  BAR" );
+
+  int out = 0;
+
+  safewrite(out, cur_pos_save,    strlen(cur_pos_save));
+  safewrite(out, cur_set,         strlen(cur_set));
+  //safewrite(out, clear_line,      strlen(clear_line));
+  safewrite(out, status,      strlen(status));
+  safewrite(out, cur_pos_restore, strlen(cur_pos_restore));
+
+}
+
+static void
 run(void) /* Run MTM. */
 {
     t_root_change = 0;
@@ -1237,7 +1265,9 @@ run(void) /* Run MTM. */
         draw(focused);
         doupdate();
 
+        status_bar();
     while (t_root[t_root_index]){
+        //status_bar();
         wint_t w = 0;
         fd_set sfds = fds;
         if (select(nfds + 1, &sfds, NULL, NULL, NULL) < 0)
@@ -1294,6 +1324,8 @@ set_next_root_index()
 	
 }
 
+
+
 int
 main(int argc, char **argv)
 {
@@ -1336,7 +1368,7 @@ main(int argc, char **argv)
     }
     */
 
-    t_root[t_root_index] = newview(NULL, 0, 0, LINES, COLS);
+    t_root[t_root_index] = newview(NULL, 0, 0, LINES-1, COLS);
     if (!t_root[t_root_index])
             quit(EXIT_FAILURE, "could not open root window");
     t_root[t_root_index]->type = ROOT;
@@ -1352,7 +1384,7 @@ main(int argc, char **argv)
 		if (set_create_root_index())
 		{
 		   //printf("create index:%d\n", t_root_index);
-                   t_root[t_root_index] = newview(NULL, 0, 0, LINES, COLS);
+                   t_root[t_root_index] = newview(NULL, 0, 0, LINES-1, COLS);
                    if (!t_root[t_root_index])
 		   {  
 		      t_root_index = old_index;
@@ -1368,7 +1400,7 @@ main(int argc, char **argv)
 	} else if (t_root_change_type == NEXT) {
 		set_next_root_index();
 		//printf("next index:%d\n", t_root_index);
-		reshape(t_root[t_root_index], 0, 0, LINES, COLS);
+		reshape(t_root[t_root_index], 0, 0, LINES-1, COLS);
                 focus(t_root[t_root_index]);
                 draw(t_root[t_root_index]);
 
@@ -1385,7 +1417,7 @@ main(int argc, char **argv)
 		   }
                    t_root[t_root_index]->type = ROOT;
                    t_root_enable[t_root_index] = 1;
-		   reshape(t_root[t_root_index], 0, 0, LINES, COLS);
+		   reshape(t_root[t_root_index], 0, 0, LINES-1, COLS);
                    focus(t_root[t_root_index]);
                    draw(t_root[t_root_index]);
 
