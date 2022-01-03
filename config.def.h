@@ -51,8 +51,14 @@
 /* The delete terminal key. */
 #define DELETE_NODE KEY(L'w')
 
+#define EXPAND_NODE KEY(L'x')
+
 /* The force redraw key. */
 #define REDRAW KEY(L'l')
+
+/* panel control */
+#define CREATE_PANE KEY(L'c')
+#define NEXT_PANE KEY(L'n')
 
 /* The scrollback keys. */
 #define SCROLLUP CODE(KEY_PPAGE)

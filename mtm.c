@@ -79,9 +79,9 @@ static int   t_root_index = 0;
 static int   t_root_change = 0;
 
 
-enum Pane_change_type { CREATE , NEXT };
+enum Pane_change_type { CREATE , NEXT , EXPAND};
 static enum Pane_change_type t_root_change_type;
-
+static NODE *t_expand_node;
 
 //#define root t_root[t_root_index]
 
@@ -1070,6 +1070,15 @@ next_pane()
   t_root_change_type = NEXT;
 }
 
+static void
+expandnode(NODE *n) /* Expand a node. */
+{
+  t_root_change = 1;
+  t_root_change_type = EXPAND;
+  t_expand_node = n;
+
+}
+
 static bool
 handlechar(int r, int k) /* Handle a single input character. */
 {
@@ -1126,6 +1135,7 @@ handlechar(int r, int k) /* Handle a single input character. */
     DO(true,  HSPLIT,              split(n, HORIZONTAL))
     DO(true,  VSPLIT,              split(n, VERTICAL))
     DO(true,  DELETE_NODE,         deletenode(n))
+    DO(true,  EXPAND_NODE,         expandnode(n))
     DO(true,  REDRAW,              touchwin(stdscr); draw(t_root[t_root_index]); redrawwin(stdscr))
     DO(true,  CREATE_PANE,         create_pane())
     DO(true,  NEXT_PANE,           next_pane())
@@ -1279,6 +1289,20 @@ main(int argc, char **argv)
 		reshape(t_root[t_root_index], 0, 0, LINES, COLS);
                 focus(t_root[t_root_index]);
                 draw(t_root[t_root_index]);
+
+	} else if (t_root_change_type == EXPAND) {
+		if (set_create_root_index())
+		{
+                   //t_root[t_root_index] = newview(NULL, 0, 0, LINES, COLS);
+                   t_root[t_root_index] = t_expand_node;
+                   if (!t_root[t_root_index])
+                           quit(EXIT_FAILURE, "could not open root window");
+                   t_root_enable[t_root_index] = 1;
+		   reshape(t_root[t_root_index], 0, 0, LINES, COLS);
+                   focus(t_root[t_root_index]);
+                   draw(t_root[t_root_index]);
+
+		}
 
 	}
     }
