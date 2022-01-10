@@ -48,8 +48,7 @@ typedef enum{
 
 typedef enum{
     ROOT,
-    CHILD,
-    EXPANDROOT
+    CHILD
 } NodeType;
 
 typedef struct SCRN SCRN;
@@ -907,6 +906,17 @@ removechild(NODE *p, const NODE *c) /* Replace p with other child. */
     freenode(p, false);
 }
 
+static void
+deletenode2(NODE *n) /* Delete a node. */
+{
+
+    if (!n || !n->p)
+        quit(EXIT_SUCCESS, NULL);
+    if (n == focused)
+        focus(n->p->c1 == n? n->p->c2 : n->p->c1);
+    removechild(n->p, n);
+    freenode(n, true);
+}
 
 static void
 root_delete(NODE *n)
@@ -953,54 +963,22 @@ root_num()
 	    }
 	}
     }
+
     return cnt;
 }
-
-static bool
-set_create_root_index()
-{
-    for ( int n =0 ; n < PANE_MAX ; n++) {
-        if (t_root_enable[n] == 0)
-	{
-	    t_root_index = n;
-	    return true;
-	}
-    }
-  return false;
-}
-
-static void
-set_next_root_index()
-{
-    int c_index = t_root_index;
-
-    for ( int n = c_index + 1 ; n < PANE_MAX ; n++) {
-        if (t_root_enable[n] == 1)
-	{
-	    t_root_index = n;
-	    return;
-	}
-    }
-    for ( int n = 0 ; n < c_index  ; n++) {
-        if (t_root_enable[n] == 1)
-	{
-	    t_root_index = n;
-	    return;
-	}
-    }
-}
-
 
 static void
 deletenode(NODE *n) /* Delete a node. */
 {
-    FD_CLR(n->pt, &fds);
     if (n->type == ROOT)
     {
+	//printf("del root");
+         //if (!n || !n->p)
+         //    quit(EXIT_SUCCESS, NULL);
+	 
 	 if ( n->p == NULL && n->c1 == NULL && n->c2 == NULL)
 	 //if ( n->c1 == NULL && n->c2 == NULL)
 	 {
-
 	       root_delete(n);
 	       if (root_empty()) {
                    quit(EXIT_SUCCESS, NULL);
@@ -1015,15 +993,18 @@ deletenode(NODE *n) /* Delete a node. */
                freenode(n, true);
 	 }
 	 
-    } else if (n->type == EXPANDROOT) {
-	       root_delete(n);
-	       if (root_empty()) {
-                   quit(EXIT_SUCCESS, NULL);
-	       } else {
-                  t_root_change = 1;
-                  t_root_change_type = NEXT;
-		  n->type = CHILD;
-	       }
+	 //
+	 //
+	 /*
+	 root_delete(n);
+	 if (root_empty()) {
+             quit(EXIT_SUCCESS, NULL);
+	 } else {
+            t_root_change = 1;
+            t_root_change_type = NEXT;
+	 }
+	 */
+
     } else {
          //if (!n || !n->p)
          //    quit(EXIT_SUCCESS, NULL);
@@ -1158,13 +1139,12 @@ getinput(NODE *n, fd_set *f) /* Recursively check all ptty's for input. */
             vtwrite(&n->vp, iobuf, r);
         if (r <= 0 && errno != EINTR && errno != EWOULDBLOCK)
 	{
-            status_bar_clear();
-            //FD_CLR(n->pt, &fds);
+		//printf("del");
             return deletenode(n), false;
 	}
     }
    status_bar_clear();
-   return true;
+    return true;
 }
 
 static void
@@ -1314,7 +1294,6 @@ status_bar()
 {
   char cur_set[256];
   char format[256];
-  char format_expandroot[256];
   char status[256];
   char left_string[256];
 
@@ -1334,16 +1313,13 @@ status_bar()
   // https://www.mm2d.net/main/prog/c/console-02.html
   
   sprintf(cur_set ,"\033[%d;%dH", LINES, 0 );
+
+  //sprintf(status  ,"\033[30m\033[43m%-30s%30s\033[0m","LEFT TEST  BAR", "RIGHT" );
+  //
+  //
   
   sprintf(format  ,"%s%d%s%d%s","\033[30m\033[43m%-", left_len, "s%", COLS - left_len ,"s\033[0m");
-  sprintf(format_expandroot  ,"%s%d%s%d%s","\033[30m\033[44m%-", left_len, "s%", COLS - left_len ,"s\033[0m");
-
-
-  if (t_root[t_root_index]->type == EXPANDROOT) {
-     sprintf(status  ,format_expandroot, left_string, right_string);
-  } else {
-     sprintf(status  ,format, left_string, right_string);
-  }
+  sprintf(status  ,format, left_string, right_string);
 
   int out = 0;
   safewrite(out, cur_pos_save,    strlen(cur_pos_save));
@@ -1379,20 +1355,54 @@ run(void) /* Run MTM. */
 
 	if (t_root_change) break;
 
-        //if(!getinput(t_root[t_root_index], &sfds)) break;
         getinput(t_root[t_root_index], &sfds);
-
 	if (t_root_change) break;
 
         draw(t_root[t_root_index]);
         doupdate();
         fixcursor();
-        //status_bar();
-        draw(focused);
         status_bar();
+        draw(focused);
+        //status_bar();
         doupdate();
     }
 }
+
+static bool
+set_create_root_index()
+{
+    for ( int n =0 ; n < PANE_MAX ; n++) {
+        if (t_root_enable[n] == 0)
+	{
+	    t_root_index = n;
+	    return true;
+	}
+    }
+  return false;
+}
+
+static void
+set_next_root_index()
+{
+    int c_index = t_root_index;
+
+    for ( int n = c_index + 1 ; n < PANE_MAX ; n++) {
+        if (t_root_enable[n] == 1)
+	{
+	    t_root_index = n;
+	    return;
+	}
+    }
+    for ( int n = 0 ; n < c_index  ; n++) {
+        if (t_root_enable[n] == 1)
+	{
+	    t_root_index = n;
+	    return;
+	}
+    }
+	
+}
+
 
 
 int
@@ -1425,6 +1435,18 @@ main(int argc, char **argv)
         t_root_enable[n] = 0;
     }
 
+    /*
+    while(1) {
+        t_root[t_root_index] = newview(NULL, 0, 0, LINES, COLS);
+        if (!t_root[t_root_index])
+            quit(EXIT_FAILURE, "could not open root window");
+        t_root_enable[t_root_index] = 1;
+        focus(t_root[t_root_index]);
+        draw(t_root[t_root_index]);
+        run();
+    }
+    */
+
     t_root[t_root_index] = newview(NULL, 0, 0, LINES-1, COLS);
     if (!t_root[t_root_index])
             quit(EXIT_FAILURE, "could not open root window");
@@ -1440,36 +1462,39 @@ main(int argc, char **argv)
 		int old_index = t_root_index;
 		if (set_create_root_index())
 		{
+		   //printf("create index:%d\n", t_root_index);
                    t_root[t_root_index] = newview(NULL, 0, 0, LINES-1, COLS);
                    if (!t_root[t_root_index])
 		   {  
 		      t_root_index = old_index;
                       continue;
+
 		   }
                    t_root[t_root_index]->type = ROOT;
                    t_root_enable[t_root_index] = 1;
                    focus(t_root[t_root_index]);
                    draw(t_root[t_root_index]);
+
 		}
 	} else if (t_root_change_type == NEXT) {
 		set_next_root_index();
+		//printf("next index:%d\n", t_root_index);
 		reshape(t_root[t_root_index], 0, 0, LINES-1, COLS);
                 focus(t_root[t_root_index]);
                 draw(t_root[t_root_index]);
-		//focus(t_root[t_root_index]);
 
 	} else if (t_root_change_type == EXPAND) {
 		int old_index = t_root_index;
 		if (set_create_root_index())
 		{
+                   //t_root[t_root_index] = newview(NULL, 0, 0, LINES, COLS);
                    t_root[t_root_index] = t_expand_node;
                    if (!t_root[t_root_index])
 		   {  
 		      t_root_index = old_index;
                       continue;
 		   }
-                   //t_root[t_root_index]->type = ROOT;
-                   t_root[t_root_index]->type = EXPANDROOT;
+                   t_root[t_root_index]->type = ROOT;
                    t_root_enable[t_root_index] = 1;
 		   reshape(t_root[t_root_index], 0, 0, LINES-1, COLS);
                    focus(t_root[t_root_index]);
