@@ -83,6 +83,7 @@ struct NODE{
     VTPARSER vp;
     int refcnt;
     NodeType type;
+    bool expand;
 };
 
 /*** GLOBALS AND PROTOTYPES */
@@ -747,6 +748,7 @@ newnode(Node t, NODE *p, int y, int x, int h, int w) /* Create a new node. */
     n->ntabs = w;
     n->refcnt = 1;
     n->type = CHILD;
+    n->expand = false;
 
     return n;
 }
@@ -1311,6 +1313,7 @@ static void
 expandnode(NODE *n) /* Expand a node. */
 {
   n->refcnt++;
+  n->expand = true;
   t_root_change = 1;
   t_root_change_type = EXPAND;
   t_expand_node = n;
@@ -1577,8 +1580,6 @@ status_bar()
   safewrite(out, status,      strlen(status));
   safewrite(out, cur_pos_restore, strlen(cur_pos_restore));
 
-  //char *lb = "OK";
-  //drow_label(3,3,"   OK     ");
   window_label(t_root[t_root_index]);
 
 }
@@ -1587,6 +1588,11 @@ static void
 window_label(NODE *n) 
 {
     drow_label(n->x, n->y, "TEST");
+
+    //if (n->expand) 
+    //{
+    //      drow_label(n->x + 3, n->y + 3, "EXPAND");
+    //}
 
     if (n->c1) window_label(n->c1);
     if (n->c2) window_label(n->c2);
