@@ -1310,7 +1310,7 @@ status_bar_clear()
 }
 
 static void
-status_bar()
+status_bar_()
 {
   char cur_set[256];
   char format[256];
@@ -1328,6 +1328,61 @@ status_bar()
   //const char *left_string  = "LEFT TEST";
   sprintf(left_string ,"LEFT_TEST [%d/%d]", t_root_index, root_num() );
   const char *right_string = "RIGHT TEST";
+
+  int left_len   = strlen( left_string);
+  int right_len  = strlen( right_string);
+  // https://www.mm2d.net/main/prog/c/console-02.html
+  
+  sprintf(cur_set ,"\033[%d;%dH", LINES, 0 );
+  
+  sprintf(format  ,"%s%d%s%d%s","\033[30m\033[43m%-", left_len, "s%", COLS - left_len ,"s\033[0m");
+  sprintf(format_expandroot  ,"%s%d%s%d%s","\033[30m\033[44m%-", left_len, "s%", COLS - left_len ,"s\033[0m");
+
+
+  if (t_root[t_root_index]->type == EXPANDROOT) {
+     sprintf(status  ,format_expandroot, left_string, right_string);
+  } else {
+     sprintf(status  ,format, left_string, right_string);
+  }
+
+  int out = 0;
+  safewrite(out, cur_pos_save,    strlen(cur_pos_save));
+  safewrite(out, cur_set,         strlen(cur_set));
+  //safewrite(out, clear_line,      strlen(clear_line));
+  safewrite(out, status,      strlen(status));
+  safewrite(out, cur_pos_restore, strlen(cur_pos_restore));
+
+}
+
+static void
+status_bar()
+{
+  char cur_set[256];
+  char format[256];
+  char format_expandroot[256];
+  char status[256];
+  char left_string[256];
+  char right_string[256];
+  char *focused_node_type;
+
+   //const char *cur_pos_save    = "\033[s";
+  const char *cur_pos_save    = "\0337";
+  //const char *cur_top_left    = "\033[0;0H";
+  const char *clear_line      = "\033[2K";
+  //const char *cur_pos_restore = "\033[u";
+  const char *cur_pos_restore = "\0338";
+
+  //const char *left_string  = "LEFT TEST";
+  sprintf(left_string ,"LEFT_TEST [%d/%d]", t_root_index, root_num() );
+
+  switch(focused->type){
+	  case ROOT:       focused_node_type ="ROOT"; break;
+	  case CHILD:      focused_node_type ="CHILD"; break;
+	  case EXPANDROOT: focused_node_type ="EXPANDROOT"; break;
+	  default:         focused_node_type ="NONE";
+  }
+  //const char *right_string = "RIGHT TEST";
+  sprintf(right_string ,"%s", focused_node_type );
 
   int left_len   = strlen( left_string);
   int right_len  = strlen( right_string);
