@@ -39,6 +39,16 @@
 #define CTL(x) ((x) & 0x1f)
 #define USAGE "usage: mtm [-T NAME] [-t NAME] [-c KEY]\n"
 
+#define GRASS_PAIR     1
+#define EMPTY_PAIR     1
+#define WATER_PAIR     2
+#define MOUNTAIN_PAIR  3
+#define LINE_PAIR    4
+#define STATUS_BAR_PAIR    5
+#define STATUS_BAR_EXPANDROOT_PAIR    6
+
+
+
 /*** DATA TYPES */
 typedef enum{
     HORIZONTAL,
@@ -741,6 +751,63 @@ newnode(Node t, NODE *p, int y, int x, int h, int w) /* Create a new node. */
     return n;
 }
 
+/*
+static NODE *
+clonenode(NODE *p) 
+{
+    NODE *n = calloc(1, sizeof(NODE));
+    memcpy(n, p, sizeof(NODE));
+    fcntl(n->pt, F_SETFL, O_NONBLOCK);
+    nfds = n->pt > nfds? n->pt : nfds;
+
+    return n;
+}
+
+static NODE *
+clonenode2(NODE *p, int y, int x, int h, int w) 
+{
+    struct winsize ws = {.ws_row = h, .ws_col = w};
+    NODE *n = newnode(VIEW, p, y, x, h, w);
+    if (!n)
+        return NULL;
+
+    SCRN *pri = &n->pri, *alt = &n->alt;
+    pri->win = newpad(MAX(h, SCROLLBACK), w);
+    alt->win = newpad(h, w);
+    if (!pri->win || !alt->win)
+        return freenode(n, false), NULL;
+    pri->tos = pri->off = MAX(0, SCROLLBACK - h);
+    n->s = pri;
+
+    nodelay(pri->win, TRUE); nodelay(alt->win, TRUE);
+    scrollok(pri->win, TRUE); scrollok(alt->win, TRUE);
+    keypad(pri->win, TRUE); keypad(alt->win, TRUE);
+
+    //setupevents(n);
+    //ris(&n->vp, n, L'c', 0, 0, NULL, NULL);
+
+    //pid_t pid = forkpty(&n->pt, NULL, NULL, &ws);
+    //if (pid < 0){
+    //    if (!p)
+    //        perror("forkpty");
+    //    return freenode(n, false), NULL;
+    //} else if (pid == 0){
+    //    char buf[100] = {0};
+    //    snprintf(buf, sizeof(buf) - 1, "%lu", (unsigned long)getppid());
+    //    setsid();
+    //    setenv("MTM", buf, 1);
+    //    setenv("TERM", getterm(), 1);
+    //    signal(SIGCHLD, SIG_DFL);
+    //    execl(getshell(), getshell(), NULL);
+    //    return NULL;
+    //}
+
+    //FD_SET(n->pt, &fds);
+    //fcntl(n->pt, F_SETFL, O_NONBLOCK);
+    //nfds = n->pt > nfds? n->pt : nfds;
+    return n;
+}
+*/
 static void
 freenode(NODE *n, bool recurse) /* Free a node. */
 {
@@ -1104,10 +1171,12 @@ static void
 drawchildren(const NODE *n) /* Draw all children of n. */
 {
     draw(n->c1);
+    attron(COLOR_PAIR(LINE_PAIR));
     if (n->t == HORIZONTAL)
         mvvline(n->y, n->x + n->w / 2, ACS_VLINE, n->h);
     else
         mvhline(n->y + n->h / 2, n->x, ACS_HLINE, n->w);
+    attroff(COLOR_PAIR(LINE_PAIR));
     wnoutrefresh(stdscr);
     draw(n->c2);
 }
@@ -1142,6 +1211,38 @@ split(NODE *n, Node t) /* Split a node. */
     focus(v);
     draw(p? p : t_root[t_root_index]);
 }
+
+/*
+static NODE *
+clonenode(NODE *p);
+static NODE *
+clonenode2(NODE *p, int y, int x, int h, int w);
+
+static void
+view_fork(NODE *n, Node t) 
+{
+    int nh = t == VERTICAL? (n->h - 1) / 2 : n->h;
+    int nw = t == HORIZONTAL? (n->w) / 2 : n->w;
+    NODE *p = n->p;
+    //NODE *v = newview(NULL, 0, 0, MAX(0, nh), MAX(0, nw));
+    //if (!v)
+    //    return;
+
+    //NODE *c = newcontainer(t, n->p, n->y, n->x, n->h, n->w, n, v);
+    NODE *z = clonenode(n);
+    NODE *z2 = clonenode2(NULL, 0, 0, MAX(0, nh), MAX(0, nw));
+    NODE *c = newcontainer(t, n->p, n->y, n->x, n->h, n->w, n, z);
+    if (!c){
+        //freenode(v, false);
+        return;
+    }
+    n->refcnt++;
+
+    replacechild(p, n, c);
+    //focus(v);
+    draw(p? p : t_root[t_root_index]);
+}
+*/
 
 static bool
 getinput(NODE *n, fd_set *f) /* Recursively check all ptty's for input. */
@@ -1271,6 +1372,8 @@ handlechar(int r, int k) /* Handle a single input character. */
     DO(true,  MOVE_OTHER,          focus(lastfocused))
     DO(true,  HSPLIT,              split(n, HORIZONTAL))
     DO(true,  VSPLIT,              split(n, VERTICAL))
+//    DO(true,  HFORK,               view_fork(n, HORIZONTAL))
+//    DO(true,  VFORK,               view_fork(n, VERTICAL))
     DO(true,  DELETE_NODE,         deletenode(n))
     DO(true,  EXPAND_NODE,         expandnode(n))
     DO(true,  REDRAW,              touchwin(stdscr); draw(t_root[t_root_index]); redrawwin(stdscr))
@@ -1335,8 +1438,8 @@ status_bar_()
   
   sprintf(cur_set ,"\033[%d;%dH", LINES, 0 );
   
-  sprintf(format  ,"%s%d%s%d%s","\033[30m\033[43m%-", left_len, "s%", COLS - left_len ,"s\033[0m");
-  sprintf(format_expandroot  ,"%s%d%s%d%s","\033[30m\033[44m%-", left_len, "s%", COLS - left_len ,"s\033[0m");
+  sprintf(format  ,"%s%d%s%d%s","\033[30m\033[44m%-", left_len, "s%", COLS - left_len ,"s\033[0m");
+  sprintf(format_expandroot  ,"%s%d%s%d%s","\033[30m\033[43m%-", left_len, "s%", COLS - left_len ,"s\033[0m");
 
 
   if (t_root[t_root_index]->type == EXPANDROOT) {
@@ -1353,6 +1456,73 @@ status_bar_()
   safewrite(out, cur_pos_restore, strlen(cur_pos_restore));
 
 }
+
+static void
+status_bar_old()
+{
+  char cur_set[256];
+  char format[256];
+  char status[256];
+  char left_string[256];
+  char right_string[256];
+  char *focused_node_type;
+
+   //const char *cur_pos_save    = "\033[s";
+  const char *cur_pos_save    = "\0337";
+  //const char *cur_top_left    = "\033[0;0H";
+  const char *clear_line      = "\033[2K";
+  //const char *cur_pos_restore = "\033[u";
+  const char *cur_pos_restore = "\0338";
+
+  //const char *left_string  = "LEFT TEST";
+  sprintf(left_string ,"LEFT_TEST [%d/%d]", t_root_index, root_num() );
+
+  switch(focused->type){
+	  case ROOT:       focused_node_type ="ROOT"; break;
+	  case CHILD:      focused_node_type ="CHILD"; break;
+	  case EXPANDROOT: focused_node_type ="EXPANDROOT"; break;
+	  default:         focused_node_type ="NONE";
+  }
+  //const char *right_string = "RIGHT TEST";
+  sprintf(right_string ,"%s", focused_node_type );
+
+  int left_len   = strlen( left_string);
+  int right_len  = strlen( right_string);
+  // https://www.mm2d.net/main/prog/c/console-02.html
+  
+  sprintf(cur_set ,"\033[%d;%dH", LINES, 0 );
+  
+  //sprintf(format  ,"%s%d%s%d%s","\033[30m\033[44m%-", left_len, "s%", COLS - left_len ,"s\033[0m");
+  sprintf(format  ,"%s%d%s%d%s","%-", left_len, "s%", COLS - left_len ,"s");
+
+
+  sprintf(status  ,format, left_string, right_string);
+
+  int out = 0;
+  safewrite(out, cur_pos_save,    strlen(cur_pos_save));
+  safewrite(out, cur_set,         strlen(cur_set));
+  //safewrite(out, clear_line,      strlen(clear_line));
+
+  if (t_root[t_root_index]->type == EXPANDROOT) {
+     attron(COLOR_PAIR(STATUS_BAR_EXPANDROOT_PAIR));
+  safewrite(out, status,      strlen(status));
+     attroff(COLOR_PAIR(STATUS_BAR_EXPANDROOT_PAIR));
+  } else {
+     attron(COLOR_PAIR(STATUS_BAR_PAIR));
+  safewrite(out, status,      strlen(status));
+     attroff(COLOR_PAIR(STATUS_BAR_PAIR));
+  }
+
+
+
+  safewrite(out, cur_pos_restore, strlen(cur_pos_restore));
+
+}
+
+static void
+window_label(NODE *n);
+static void
+drow_label(int x, int y, char *string);
 
 static void
 status_bar()
@@ -1390,8 +1560,8 @@ status_bar()
   
   sprintf(cur_set ,"\033[%d;%dH", LINES, 0 );
   
-  sprintf(format  ,"%s%d%s%d%s","\033[30m\033[43m%-", left_len, "s%", COLS - left_len ,"s\033[0m");
-  sprintf(format_expandroot  ,"%s%d%s%d%s","\033[30m\033[44m%-", left_len, "s%", COLS - left_len ,"s\033[0m");
+  sprintf(format  ,"%s%d%s%d%s","\033[30m\033[44m%-", left_len, "s%", COLS - left_len ,"s\033[0m");
+  sprintf(format_expandroot  ,"%s%d%s%d%s","\033[30m\033[43m%-", left_len, "s%", COLS - left_len ,"s\033[0m");
 
 
   if (t_root[t_root_index]->type == EXPANDROOT) {
@@ -1407,8 +1577,51 @@ status_bar()
   safewrite(out, status,      strlen(status));
   safewrite(out, cur_pos_restore, strlen(cur_pos_restore));
 
+  //char *lb = "OK";
+  //drow_label(3,3,"   OK     ");
+  window_label(t_root[t_root_index]);
+
 }
 
+static void
+window_label(NODE *n) 
+{
+    drow_label(n->x, n->y, "TEST");
+
+    if (n->c1) window_label(n->c1);
+    if (n->c2) window_label(n->c2);
+}
+
+static void
+drow_label(int x, int y, char *string)
+{
+  char cur_set[256];
+  char format[256];
+  char label[256];
+
+   //const char *cur_pos_save    = "\033[s";
+  const char *cur_pos_save    = "\0337";
+  //const char *cur_top_left    = "\033[0;0H";
+  const char *clear_line      = "\033[2K";
+  //const char *cur_pos_restore = "\033[u";
+  const char *cur_pos_restore = "\0338";
+
+  sprintf(cur_set ,"\033[%d;%dH", y, x );
+  
+  //sprintf(format  ,"%s","\033[30m\033[44m%s\033[0m");
+  sprintf(format  ,"%s","\033[30m\033[41m%s\033[0m");
+
+  sprintf(label  ,format, string);
+
+  int out = 0;
+  safewrite(out, cur_pos_save,    strlen(cur_pos_save));
+  safewrite(out, cur_set,         strlen(cur_set));
+  //safewrite(out, clear_line,      strlen(clear_line));
+  safewrite(out, label,      strlen(label));
+  //safewrite(out, string,      strlen(string));
+  safewrite(out, cur_pos_restore, strlen(cur_pos_restore));
+
+}
 static void
 run(void) /* Run MTM. */
 {
@@ -1473,6 +1686,11 @@ main(int argc, char **argv)
     intrflush(stdscr, FALSE);
     start_color();
     use_default_colors();
+
+    //init_pair(LINE_PAIR, COLOR_RED, COLOR_MAGENTA);
+    init_pair(LINE_PAIR,                  COLOR_BLUE,  COLOR_BLACK);
+    init_pair(STATUS_BAR_PAIR,            COLOR_RED, COLOR_BLUE);
+    init_pair(STATUS_BAR_EXPANDROOT_PAIR, COLOR_BLACK, COLOR_MAGENTA);
     start_pairs();
 
     for ( int n =0 ; n < PANE_MAX ; n++) {

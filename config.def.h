@@ -48,6 +48,10 @@
 #define HSPLIT KEY(L'h')
 #define VSPLIT KEY(L'v')
 
+/* The fork terminal keys. */
+//#define HFORK KEY(L'H')
+//#define VFORK KEY(L'V')
+
 /* The delete terminal key. */
 #define DELETE_NODE KEY(L'q')
 
