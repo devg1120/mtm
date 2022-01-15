@@ -1525,7 +1525,7 @@ status_bar_old()
 static void
 window_label(NODE *n);
 static void
-drow_label(int x, int y, char *string);
+drow_label(int x, int y, int color, char *string);
 
 static void
 status_bar()
@@ -1587,8 +1587,38 @@ status_bar()
 static void
 window_label(NODE *n) 
 {
-    drow_label(n->x, n->y, "TEST");
+/*
+    if ( n->t == VIEW ) {
+         drow_label(n->x, n->y, 4,"VIEW");
+    } else if ( n->t == HORIZONTAL ) {
+         drow_label(n->x, n->y, 4,"HORIZONTAL");
+    } else if ( n->t == VERTICAL ) {
+         drow_label(n->x, n->y, 4,"VERTICAL");
+    }
+*/
+/*
+    if ( n->type == ROOT ) {
+         drow_label(n->x, n->y, 1,"ROOT");
+    } else if ( n->type == CHILD  ) {
+         drow_label(n->x, n->y, 2, "CHILD");
+    } else if ( n->type == EXPANDROOT ) {
+         drow_label(n->x, n->y, 3,"EXPANDROOT");
+    }
+*/
 
+    int c = 4; // color
+
+    if ( n == focused) c = 3;
+
+    if ( n->x == 0 && n->y == 0 ) {
+         drow_label(n->x    , n->y     , c,"00");
+    } else if ( n->x == 0 && n->y != 0 ) {
+         drow_label(n->x    , n->y     , c,"10");
+    } else if ( n->x != 0 && n->y == 0 ) {
+         drow_label(n->x + 1, n->y     , c,"01");
+    } else {
+         drow_label(n->x + 1, n->y     , c,"11");
+    }
     //if (n->expand) 
     //{
     //      drow_label(n->x + 3, n->y + 3, "EXPAND");
@@ -1599,7 +1629,7 @@ window_label(NODE *n)
 }
 
 static void
-drow_label(int x, int y, char *string)
+drow_label(int x, int y, int color, char *string)
 {
   char cur_set[256];
   char format[256];
@@ -1615,7 +1645,8 @@ drow_label(int x, int y, char *string)
   sprintf(cur_set ,"\033[%d;%dH", y, x );
   
   //sprintf(format  ,"%s","\033[30m\033[44m%s\033[0m");
-  sprintf(format  ,"%s","\033[30m\033[41m%s\033[0m");
+  //sprintf(format  ,"%s","\033[30m\033[41m%s\033[0m");
+  sprintf(format  ,"%s%d%s","\033[30m\033[4", color,"m%s\033[0m" );
 
   sprintf(label  ,format, string);
 
