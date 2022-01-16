@@ -44,6 +44,8 @@
 #define MOVE_LEFT       CODE(KEY_LEFT)
 #define MOVE_OTHER      KEY(L'o')
 
+#define QUIT KEY(L'Q')
+
 /* The split terminal keys. */
 #define HSPLIT KEY(L'h')
 #define VSPLIT KEY(L'v')
@@ -58,11 +60,17 @@
 #define EXPAND_NODE KEY(L'x')
 
 /* The force redraw key. */
-#define REDRAW KEY(L'l')
+#define REDRAW KEY(L'r')
 
 /* panel control */
 #define CREATE_PANE KEY(L'c')
 #define NEXT_PANE KEY(L'n')
+
+#define PANE_NEXT  CODE(KEY_NPAGE)
+#define PANE_PREV  CODE(KEY_PPAGE)
+
+#define WINDOW_LABEL KEY(L'l')
+#define WINDOW_LABEL_EDIT KEY(L'e')
 
 /* The scrollback keys. */
 #define SCROLLUP CODE(KEY_PPAGE)

@@ -34,6 +34,8 @@
 /*** CONFIGURATION */
 #include "config.h"
 
+char *lineedit();
+
 #define MIN(x, y) ((x) < (y)? (x) : (y))
 #define MAX(x, y) ((x) > (y)? (x) : (y))
 #define CTL(x) ((x) & 0x1f)
@@ -84,6 +86,8 @@ struct NODE{
     int refcnt;
     NodeType type;
     bool expand;
+    char label_buf[256];
+    //char *label_buf ;
 };
 
 /*** GLOBALS AND PROTOTYPES */
@@ -96,9 +100,10 @@ static int  t_root_enable[PANE_MAX] ;
 
 static int   t_root_index = 0;
 static int   t_root_change = 0;
+static bool  window_label_show = false;
 
 
-enum Pane_change_type { CREATE , NEXT , EXPAND};
+enum Pane_change_type { CREATE , NEXT , PREV, TOGGLE_LABEL, EXPAND};
 static enum Pane_change_type t_root_change_type;
 static NODE *t_expand_node;
 
@@ -892,6 +897,7 @@ newview(NODE *p, int y, int x, int h, int w) /* Open a new view. */
         setsid();
         setenv("MTM", buf, 1);
         setenv("TERM", getterm(), 1);
+        setenv("PS1", ">", 1);
         signal(SIGCHLD, SIG_DFL);
         execl(getshell(), getshell(), NULL);
         return NULL;
@@ -1059,6 +1065,27 @@ set_next_root_index()
     }
 }
 
+static void
+set_prev_root_index()
+{
+    int c_index = t_root_index;
+
+    for ( int n = c_index - 1 ; n >= 0 ; n--) {
+        if (t_root_enable[n] == 1)
+	{
+	    t_root_index = n;
+	    return;
+	}
+    }
+    for ( int n = PANE_MAX ; n > c_index  ; n--) {
+        if (t_root_enable[n] == 1)
+	{
+	    t_root_index = n;
+	    return;
+	}
+    }
+}
+
 
 static void
 deletenode(NODE *n) /* Delete a node. */
@@ -1193,6 +1220,7 @@ draw(NODE *n) /* Draw a node. */
         drawchildren(n);
 }
 
+
 static void
 split(NODE *n, Node t) /* Split a node. */
 {
@@ -1310,6 +1338,35 @@ next_pane()
 }
 
 static void
+prev_pane()
+{
+  t_root_change = 1;
+  t_root_change_type = PREV;
+}
+
+static void
+toggle_window_label()
+{
+   window_label_show = !window_label_show;
+   //reshape(t_root[t_root_index], 0, 0, LINES-1, COLS);
+   //draw(t_root[t_root_index]);
+  t_root_change = 1;
+  t_root_change_type = TOGGLE_LABEL;
+}
+
+static void
+window_label_edit(NODE *n)
+{
+char *string = lineedit();
+  strcpy(n->label_buf, string);
+  //n->label_buf[strlen(string)] = '\0';
+
+	//n->label_buf = lineedit();
+  t_root_change = 1;
+  t_root_change_type = TOGGLE_LABEL;
+}
+
+static void
 expandnode(NODE *n) /* Expand a node. */
 {
   n->refcnt++;
@@ -1319,6 +1376,15 @@ expandnode(NODE *n) /* Expand a node. */
   t_expand_node = n;
 
 }
+
+static void 
+app_exit() {
+
+  quit(EXIT_SUCCESS, NULL);
+  exit(0);
+
+}
+
 
 static bool
 handlechar(int r, int k) /* Handle a single input character. */
@@ -1340,6 +1406,8 @@ handlechar(int r, int k) /* Handle a single input character. */
     DO(false, KEY(0),              SENDN(n, "\000", 1); SB)
     DO(false, KEY(L'\n'),          SEND(n, "\n"); SB)
     DO(false, KEY(L'\r'),          SEND(n, n->lnm? "\r\n" : "\r"); SB)
+    DO(false, PANE_NEXT,           next_pane())
+    DO(false, PANE_PREV,           prev_pane())
     DO(false, SCROLLUP && INSCR,   scrollback(n))
     DO(false, SCROLLDOWN && INSCR, scrollforward(n))
     DO(false, RECENTER && INSCR,   scrollbottom(n))
@@ -1356,7 +1424,8 @@ handlechar(int r, int k) /* Handle a single input character. */
     DO(false, CODE(KEY_DC),        SEND(n, "\033[3~"); SB)
     DO(false, CODE(KEY_IC),        SEND(n, "\033[2~"); SB)
     DO(false, CODE(KEY_BTAB),      SEND(n, "\033[Z"); SB)
-    DO(false, CODE(KEY_F(1)),      SEND(n, "\033OP"); SB)
+    DO(false, CODE(KEY_F(1)),      toggle_window_label())
+    //DO(false, CODE(KEY_F(1)),      SEND(n, "\033OP"); SB)
     DO(false, CODE(KEY_F(2)),      SEND(n, "\033OQ"); SB)
     DO(false, CODE(KEY_F(3)),      SEND(n, "\033OR"); SB)
     DO(false, CODE(KEY_F(4)),      SEND(n, "\033OS"); SB)
@@ -1368,6 +1437,7 @@ handlechar(int r, int k) /* Handle a single input character. */
     DO(false, CODE(KEY_F(10)),     SEND(n, "\033[21~"); SB)
     DO(false, CODE(KEY_F(11)),     SEND(n, "\033[23~"); SB)
     DO(false, CODE(KEY_F(12)),     SEND(n, "\033[24~"); SB)
+    DO(true,  QUIT,                app_exit())
     DO(true,  MOVE_UP,             focus(findnode(t_root[t_root_index], ABOVE(n))))
     DO(true,  MOVE_DOWN,           focus(findnode(t_root[t_root_index], BELOW(n))))
     DO(true,  MOVE_LEFT,           focus(findnode(t_root[t_root_index], LEFT(n))))
@@ -1382,6 +1452,10 @@ handlechar(int r, int k) /* Handle a single input character. */
     DO(true,  REDRAW,              touchwin(stdscr); draw(t_root[t_root_index]); redrawwin(stdscr))
     DO(true,  CREATE_PANE,         create_pane())
     DO(true,  NEXT_PANE,           next_pane())
+    DO(true,  PANE_NEXT,           next_pane())
+    DO(true,  PANE_PREV,           prev_pane())
+    DO(true,  WINDOW_LABEL,        toggle_window_label())
+    DO(true,  WINDOW_LABEL_EDIT,   window_label_edit(n))
     DO(true,  SCROLLUP,            scrollback(n))
     DO(true,  SCROLLDOWN,          scrollforward(n))
     DO(true,  RECENTER,            scrollbottom(n))
@@ -1415,6 +1489,7 @@ status_bar_clear()
 
 }
 
+/*
 static void
 status_bar_()
 {
@@ -1459,73 +1534,18 @@ status_bar_()
   safewrite(out, cur_pos_restore, strlen(cur_pos_restore));
 
 }
+*/
 
-static void
-status_bar_old()
-{
-  char cur_set[256];
-  char format[256];
-  char status[256];
-  char left_string[256];
-  char right_string[256];
-  char *focused_node_type;
-
-   //const char *cur_pos_save    = "\033[s";
-  const char *cur_pos_save    = "\0337";
-  //const char *cur_top_left    = "\033[0;0H";
-  const char *clear_line      = "\033[2K";
-  //const char *cur_pos_restore = "\033[u";
-  const char *cur_pos_restore = "\0338";
-
-  //const char *left_string  = "LEFT TEST";
-  sprintf(left_string ,"LEFT_TEST [%d/%d]", t_root_index, root_num() );
-
-  switch(focused->type){
-	  case ROOT:       focused_node_type ="ROOT"; break;
-	  case CHILD:      focused_node_type ="CHILD"; break;
-	  case EXPANDROOT: focused_node_type ="EXPANDROOT"; break;
-	  default:         focused_node_type ="NONE";
-  }
-  //const char *right_string = "RIGHT TEST";
-  sprintf(right_string ,"%s", focused_node_type );
-
-  int left_len   = strlen( left_string);
-  int right_len  = strlen( right_string);
-  // https://www.mm2d.net/main/prog/c/console-02.html
-  
-  sprintf(cur_set ,"\033[%d;%dH", LINES, 0 );
-  
-  //sprintf(format  ,"%s%d%s%d%s","\033[30m\033[44m%-", left_len, "s%", COLS - left_len ,"s\033[0m");
-  sprintf(format  ,"%s%d%s%d%s","%-", left_len, "s%", COLS - left_len ,"s");
-
-
-  sprintf(status  ,format, left_string, right_string);
-
-  int out = 0;
-  safewrite(out, cur_pos_save,    strlen(cur_pos_save));
-  safewrite(out, cur_set,         strlen(cur_set));
-  //safewrite(out, clear_line,      strlen(clear_line));
-
-  if (t_root[t_root_index]->type == EXPANDROOT) {
-     attron(COLOR_PAIR(STATUS_BAR_EXPANDROOT_PAIR));
-  safewrite(out, status,      strlen(status));
-     attroff(COLOR_PAIR(STATUS_BAR_EXPANDROOT_PAIR));
-  } else {
-     attron(COLOR_PAIR(STATUS_BAR_PAIR));
-  safewrite(out, status,      strlen(status));
-     attroff(COLOR_PAIR(STATUS_BAR_PAIR));
-  }
-
-
-
-  safewrite(out, cur_pos_restore, strlen(cur_pos_restore));
-
-}
 
 static void
 window_label(NODE *n);
 static void
-drow_label(int x, int y, int color, char *string);
+//draw_label(int x, int y, int color, char *string);
+draw_label(int x, int y, int color, char *string, char *label_buf);
+static void
+window_label_clear(NODE *n);
+static void
+draw_label_clear(int x, int y, int color, char *string);
 
 static void
 status_bar()
@@ -1555,7 +1575,11 @@ status_bar()
 	  default:         focused_node_type ="NONE";
   }
   //const char *right_string = "RIGHT TEST";
-  sprintf(right_string ,"%s", focused_node_type );
+  if (window_label_show) {
+     sprintf(right_string ,"%s *", focused_node_type );
+  } else {
+     sprintf(right_string ,"%s  ", focused_node_type );
+  }
 
   int left_len   = strlen( left_string);
   int right_len  = strlen( right_string);
@@ -1580,7 +1604,9 @@ status_bar()
   safewrite(out, status,      strlen(status));
   safewrite(out, cur_pos_restore, strlen(cur_pos_restore));
 
-  window_label(t_root[t_root_index]);
+  if (window_label_show) {
+     window_label(t_root[t_root_index]);
+  }
 
 }
 
@@ -1611,25 +1637,21 @@ window_label(NODE *n)
     if ( n == focused) c = 3;
 
     if ( n->x == 0 && n->y == 0 ) {
-         drow_label(n->x    , n->y     , c,"00");
+         draw_label(n->x    , n->y     , c,"00", n->label_buf);
     } else if ( n->x == 0 && n->y != 0 ) {
-         drow_label(n->x    , n->y     , c,"10");
+         draw_label(n->x    , n->y     , c,"10", n->label_buf);
     } else if ( n->x != 0 && n->y == 0 ) {
-         drow_label(n->x + 1, n->y     , c,"01");
+         draw_label(n->x + 1, n->y     , c,"01", n->label_buf);
     } else {
-         drow_label(n->x + 1, n->y     , c,"11");
+         draw_label(n->x + 1, n->y     , c,"11", n->label_buf);
     }
-    //if (n->expand) 
-    //{
-    //      drow_label(n->x + 3, n->y + 3, "EXPAND");
-    //}
 
     if (n->c1) window_label(n->c1);
     if (n->c2) window_label(n->c2);
 }
 
 static void
-drow_label(int x, int y, int color, char *string)
+draw_label(int x, int y, int color, char *string, char *label_buf)
 {
   char cur_set[256];
   char format[256];
@@ -1648,17 +1670,82 @@ drow_label(int x, int y, int color, char *string)
   //sprintf(format  ,"%s","\033[30m\033[41m%s\033[0m");
   sprintf(format  ,"%s%d%s","\033[30m\033[4", color,"m%s\033[0m" );
 
-  sprintf(label  ,format, string);
+  //sprintf(label  ,format, string);
+  sprintf(label  ,format, label_buf);
 
   int out = 0;
   safewrite(out, cur_pos_save,    strlen(cur_pos_save));
   safewrite(out, cur_set,         strlen(cur_set));
   //safewrite(out, clear_line,      strlen(clear_line));
+
   safewrite(out, label,      strlen(label));
   //safewrite(out, string,      strlen(string));
   safewrite(out, cur_pos_restore, strlen(cur_pos_restore));
 
 }
+/*
+static void
+window_label_clear(NODE *n) 
+{
+
+    int c = 4; // color
+
+    if ( n == focused) c = 3;
+
+    if ( n->x == 0 && n->y == 0 ) {
+         draw_label_clear(n->x    , n->y     , c,n->label_buf);
+    } else if ( n->x == 0 && n->y != 0 ) {
+         draw_label_clear(n->x    , n->y     , c,n->label_buf);
+    } else if ( n->x != 0 && n->y == 0 ) {
+         draw_label_clear(n->x + 1, n->y     , c,n->label_buf);
+    } else {
+         draw_label_clear(n->x + 1, n->y     , c,n->label_buf);
+    }
+
+    if (n->c1) window_label_clear(n->c1);
+    if (n->c2) window_label_clear(n->c2);
+}
+
+static void
+draw_label_clear(int x, int y, int color, char *string)
+{
+  char cur_set[256];
+  char format[256];
+  char label[256];
+
+   //const char *cur_pos_save    = "\033[s";
+  const char *cur_pos_save    = "\0337";
+  //const char *cur_top_left    = "\033[0;0H";
+  const char *clear_line      = "\033[2K";
+  //const char *clear_box       = "\033[>3;0;0;10;3J";
+  const char *clear_label       = "\033[3;0;2K";
+  //const char *cur_pos_restore = "\033[u";
+  const char *cur_pos_restore = "\0338";
+
+  sprintf(cur_set ,"\033[%d;%dH", y, x );
+  
+  //sprintf(format  ,"%s","\033[30m\033[44m%s\033[0m");
+  //sprintf(format  ,"%s","\033[30m\033[41m%s\033[0m");
+  sprintf(format  ,"%s%d%s","\033[30m\033[4", color,"m%s\033[0m" );
+
+  sprintf(label  ,format, string);
+
+  int out = 0;
+  
+  safewrite(out, cur_pos_save,    strlen(cur_pos_save));
+  safewrite(out, cur_set,         strlen(cur_set));
+  //safewrite(out, clear_line,      strlen(clear_line));
+  safewrite(out, clear_label,      strlen(clear_label));
+  //safewrite(out, label,      strlen(label));
+  //safewrite(out, string,      strlen(string));
+  safewrite(out, cur_pos_restore, strlen(cur_pos_restore));
+
+  //safewrite(out, clear_box, strlen(clear_box));
+
+}
+
+*/
+
 static void
 run(void) /* Run MTM. */
 {
@@ -1762,12 +1849,39 @@ main(int argc, char **argv)
                    draw(t_root[t_root_index]);
 		}
 	} else if (t_root_change_type == NEXT) {
+		clear();
 		set_next_root_index();
 		reshape(t_root[t_root_index], 0, 0, LINES-1, COLS);
                 focus(t_root[t_root_index]);
                 draw(t_root[t_root_index]);
 		//focus(t_root[t_root_index]);
 
+	} else if (t_root_change_type == PREV) {
+		clear();
+		set_prev_root_index();
+		reshape(t_root[t_root_index], 0, 0, LINES-1, COLS);
+                focus(t_root[t_root_index]);
+                draw(t_root[t_root_index]);
+		//focus(t_root[t_root_index]);
+
+	} else if (t_root_change_type == TOGGLE_LABEL) {
+                   if (window_label_show) {
+		      clear();
+                      //draw(t_root[t_root_index]);
+                      window_label(t_root[t_root_index]);
+                   } else {
+                      //reshape(t_root[t_root_index], 0, 0, LINES-1, COLS);
+                      //window_label_clear(t_root[t_root_index]);
+                      //reshapeview(t_root[t_root_index],0,0);
+                      //draw(t_root[t_root_index]);
+		      //wnoutrefresh(stdscr);
+		      //doupdate();
+		      //refresh();
+		      clear();
+		      //reshape(t_root[t_root_index], 0, 0, LINES-1, COLS);
+                      draw(t_root[t_root_index]);
+
+		   }
 	} else if (t_root_change_type == EXPAND) {
 		int old_index = t_root_index;
 		if (set_create_root_index())
