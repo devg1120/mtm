@@ -1556,6 +1556,7 @@ status_bar()
   char status[256];
   char left_string[256];
   char right_string[256];
+  char pane_led[256];
   char *focused_node_type;
 
    //const char *cur_pos_save    = "\033[s";
@@ -1568,6 +1569,18 @@ status_bar()
   //const char *left_string  = "LEFT TEST";
   sprintf(left_string ,"LEFT_TEST [%d/%d]", t_root_index, root_num() );
 
+  int max = root_num();
+
+  for ( int x = 0; x < max ; x++) {
+        if ( x == t_root_index) {
+            pane_led[x] ='T';
+	} else {
+            pane_led[x] ='.';
+	}
+  }
+  pane_led[max] ='\0';
+
+
   switch(focused->type){
 	  case ROOT:       focused_node_type ="ROOT"; break;
 	  case CHILD:      focused_node_type ="CHILD"; break;
@@ -1576,9 +1589,9 @@ status_bar()
   }
   //const char *right_string = "RIGHT TEST";
   if (window_label_show) {
-     sprintf(right_string ,"%s *", focused_node_type );
+     sprintf(right_string ,"%s * %s", focused_node_type , pane_led);
   } else {
-     sprintf(right_string ,"%s  ", focused_node_type );
+     sprintf(right_string ,"%s   %s", focused_node_type , pane_led);
   }
 
   int left_len   = strlen( left_string);
