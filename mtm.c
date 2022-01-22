@@ -1358,12 +1358,17 @@ static void
 window_label_edit(NODE *n)
 {
 char *string = lineedit();
-  strcpy(n->label_buf, string);
-  //n->label_buf[strlen(string)] = '\0';
 
-	//n->label_buf = lineedit();
-  t_root_change = 1;
-  t_root_change_type = TOGGLE_LABEL;
+  if (string[0] == '$') {
+   strcpy(n->label_buf, string);
+   t_root_change = 1;
+   t_root_change_type = TOGGLE_LABEL;
+  } else {
+   SEND(n,"\n");
+   SEND(n,string);
+   SEND(n,"\n");
+  }
+
 }
 
 static void
