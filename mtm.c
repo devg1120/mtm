@@ -902,7 +902,6 @@ newview(NODE *p, int y, int x, int h, int w) /* Open a new view. */
             perror("forkpty");
         return freenode(n, false), NULL;
     } else if (pid == 0){
-        //n->pid = getpid();
         char buf[100] = {0};
         snprintf(buf, sizeof(buf) - 1, "%lu", (unsigned long)getppid());
         setsid();
@@ -911,8 +910,10 @@ newview(NODE *p, int y, int x, int h, int w) /* Open a new view. */
         setenv("PS1", ">", 1);
         signal(SIGCHLD, SIG_DFL);
         execl(getshell(), getshell(), NULL);
-        n->pid = getpid();
+        //n->pid = getpid();
         return NULL;
+    } else {
+	    n->pid = pid;
     }
 
     FD_SET(n->pt, &fds);
@@ -1412,7 +1413,6 @@ node_save(NODE *n, FILE *fp, int lv)
 
     if (n->type != EXPANDROOT)
     {
-
           switch (n->type) 
 	  {
 		  case ROOT:
@@ -1445,7 +1445,12 @@ node_save(NODE *n, FILE *fp, int lv)
 	     sprintf(indent, indent_format, " ");
 	     sprintf(label, "\"%s\"", n->label_buf);
 
-	     sprintf(output_param, "%s %s %s [%d]", nodetype, viewtype, label, n->pid);
+             if (n->pid > 0 )
+	     {
+	       sprintf(output_param, "%s %s %s [%d]", nodetype, viewtype, label, n->pid);
+	     } else {
+	       sprintf(output_param, "%s %s %s ", nodetype, viewtype, label );
+	     }
 	     sprintf(output, "%s%s\n", indent, output_param);
 	
 	     //fputs(indent,fp);

@@ -30,10 +30,10 @@ is_symlink(char *filepath)
 }
 
 int
-read_symlink(char *filepath, char *buf)
+read_symlink(char *filepath, char *mbuf)
 {
     ssize_t len = 0;
-    //char buf[BUFSIZ] = {"\0"};
+    char buf[BUFSIZ] = {"\0"};
     int rc = 0;
 
     rc = is_symlink(filepath);
@@ -50,6 +50,8 @@ read_symlink(char *filepath, char *buf)
     buf[len] = '\0';
 
     //printf("%s\n", buf);
+    //strncpy(mbuf, buf, len);
+    strcpy(mbuf, buf);
 
     return 0;
 }
