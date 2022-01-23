@@ -71,6 +71,8 @@
 
 #define WINDOW_LABEL KEY(L'l')
 #define WINDOW_LABEL_EDIT KEY(L'e')
+#define COMMAND_SHELL KEY(L's')
+#define SESSION_SAVE KEY(L'S')
 
 /* The scrollback keys. */
 #define SCROLLUP CODE(KEY_PPAGE)

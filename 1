@@ -28,8 +28,6 @@
 #include <unistd.h>
 #include <wchar.h>
 #include <wctype.h>
-//#include <string.h>
-//#include <stdio.h>
 
 #include "vtparser.h"
 
@@ -37,9 +35,6 @@
 #include "config.h"
 
 char *lineedit();
-
-int read_symlink(char *filepath, char *buf);
-
 
 #define MIN(x, y) ((x) < (y)? (x) : (y))
 #define MAX(x, y) ((x) > (y)? (x) : (y))
@@ -763,7 +758,6 @@ newnode(Node t, NODE *p, int y, int x, int h, int w) /* Create a new node. */
     n->type = CHILD;
     n->expand = false;
     n->command_shell_loop = false;
-    n->pid = 0;
 
     return n;
 }
@@ -902,7 +896,6 @@ newview(NODE *p, int y, int x, int h, int w) /* Open a new view. */
             perror("forkpty");
         return freenode(n, false), NULL;
     } else if (pid == 0){
-        //n->pid = getpid();
         char buf[100] = {0};
         snprintf(buf, sizeof(buf) - 1, "%lu", (unsigned long)getppid());
         setsid();
@@ -911,7 +904,6 @@ newview(NODE *p, int y, int x, int h, int w) /* Open a new view. */
         setenv("PS1", ">", 1);
         signal(SIGCHLD, SIG_DFL);
         execl(getshell(), getshell(), NULL);
-        n->pid = getpid();
         return NULL;
     }
 
@@ -1396,18 +1388,9 @@ node_save(NODE *n, FILE *fp, int lv)
     char nodetype[256];
     char viewtype[256];
     char label[256];
-    char pid[24];
-    char proc_cwd_path[256];
-    char proc_exe_path[256];
-    char cwd[256];
-    char exe[256];
-
-    char *proc_cwd_path_format = "/proc/%d/cwd";
-    char *proc_exe_path_format = "/proc/%d/exe";
 
     char output_param[256];
     char output[256];
-
     lv++;
 
     if (n->type != EXPANDROOT)
@@ -1445,30 +1428,11 @@ node_save(NODE *n, FILE *fp, int lv)
 	     sprintf(indent, indent_format, " ");
 	     sprintf(label, "\"%s\"", n->label_buf);
 
-	     sprintf(output_param, "%s %s %s [%d]", nodetype, viewtype, label, n->pid);
+	     sprintf(output_param, "%s %s %s", nodetype, viewtype, label);
 	     sprintf(output, "%s%s\n", indent, output_param);
 	
 	     //fputs(indent,fp);
 	     fputs(output,fp);
-
-             if (n->pid > 0 )
-	     {
-               sprintf(proc_cwd_path, proc_cwd_path_format, n->pid);
-               sprintf(proc_exe_path, proc_exe_path_format, n->pid);
-
-	       read_symlink(proc_cwd_path, cwd);
-	       read_symlink(proc_exe_path, exe);
-
-	       sprintf(output_param, "cwd: %s", cwd);
-	       sprintf(output, "%s%s\n", indent, output_param);
-	       fputs(output,fp);
-
-	       sprintf(output_param, "exe: %s", exe);
-	       sprintf(output, "%s%s\n", indent, output_param);
-	       fputs(output,fp);
-
-
-             }
 	     
 
 	    if (n->c1) node_save(n->c1, fp, lv);

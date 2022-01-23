@@ -10,7 +10,7 @@ LIBS      ?= -l$(CURSESLIB) -lutil
 
 all: mtm
 
-mtm: vtparser.c mtm.c pair.c config.h
+mtm: vtparser.c mtm.c pair.c config.h readlink.c
 	$(CC) $(CFLAGS) $(FEATURES) -o $@ $(HEADERS) vtparser.c mtm.c pair.c $(LIBPATH) $(LIBS)
 	strip mtm
 
