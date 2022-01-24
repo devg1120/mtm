@@ -109,6 +109,9 @@ static int   t_root_index = 0;
 static int   t_root_change = 0;
 static bool  window_label_show = false;
 //static bool  command_shell_loop = false;
+//
+static int t_mouse_x = 0;
+static int t_mouse_y = 0;
 
 
 enum Pane_change_type { CREATE , NEXT , PREV, TOGGLE_LABEL, EXPAND};
@@ -1509,6 +1512,50 @@ session_save(NODE *n)
     fclose(fp);
 }
 
+static bool
+is_coordinate(int y, int x, int h, int w, int mx , int my)
+{
+
+  if (mx > x && mx < (x + w) && my > y && my < ( y + h )) return true;
+
+  return false;
+
+}
+
+static NODE*
+coordinate_findnode_recursive(NODE *n, int x, int y)
+{
+    NODE *sn = 0;
+
+    if (n->t == VIEW)
+    {
+        if (is_coordinate(n->y, n->x, n->h, n->w, x , y)) return n;
+    }
+
+    if (n->c1) 
+    {
+	    sn = coordinate_findnode_recursive(n->c1, x, y);
+    }
+
+    if (sn != 0)  return sn;
+
+    if (n->c2) 
+    {
+	    sn = coordinate_findnode_recursive(n->c2, x, y);
+    }
+
+    if (sn != 0)  return sn;
+
+  return 0;
+}
+
+
+static NODE* 
+coordinate_findnode(int x, int y)
+{
+  return coordinate_findnode_recursive(t_root[t_root_index], x ,y);
+}
+
 static void
 command_shell(NODE *n)
 {
@@ -1565,6 +1612,22 @@ expandnode(NODE *n) /* Expand a node. */
 
 }
 
+static void
+mouse_event(NODE *n) 
+{
+   MEVENT e;
+   if (getmouse(&e) == OK) {
+	   t_mouse_x = e.x;
+	   t_mouse_y = e.y;
+   }
+
+   NODE *cn = coordinate_findnode(e.x, e.y);
+   if (cn) {
+       focus(cn);
+   }
+   //focus(t_root[t_root_index]);
+}
+
 static void 
 app_exit() {
 
@@ -1605,6 +1668,7 @@ handlechar(int r, int k) /* Handle a single input character. */
     DO(false, CODE(KEY_RIGHT),     sendarrow(n, "C"); SB);
     DO(false, CODE(KEY_LEFT),      sendarrow(n, "D"); SB);
     DO(false, CODE(KEY_HOME),      toggle_window_label())
+    DO(false, CODE(KEY_MOUSE),     mouse_event(n))
     //DO(false, CODE(KEY_HOME),      SEND(n, "\033[1~"); SB)
     DO(false, CODE(KEY_END),       SEND(n, "\033[4~"); SB)
     DO(false, CODE(KEY_PPAGE),     SEND(n, "\033[5~"); SB)
@@ -1759,7 +1823,13 @@ status_bar()
   const char *cur_pos_restore = "\0338";
 
   //const char *left_string  = "LEFT TEST";
-  sprintf(left_string ,"LEFT_TEST [%d/%d]", t_root_index, root_num() );
+  sprintf(left_string ,"LEFT_ [%d/%d]  %d,%d", t_root_index, root_num() , t_mouse_x, t_mouse_y);
+                                                                       /*
+									*   ---------------> x
+									*   |
+									*   |
+									*    y
+									*/
 
   int max = root_num();
 
@@ -2015,6 +2085,9 @@ main(int argc, char **argv)
     intrflush(stdscr, FALSE);
     start_color();
     use_default_colors();
+
+    keypad(stdscr, TRUE); // xtermでマウスイベントの取得に必要
+    mousemask(ALL_MOUSE_EVENTS, NULL);//マウスイベントを取得
 
     //init_pair(LINE_PAIR, COLOR_RED, COLOR_MAGENTA);
     init_pair(LINE_PAIR,                  COLOR_BLUE,  COLOR_BLACK);
