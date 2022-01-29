@@ -112,6 +112,7 @@ static bool  window_label_show = false;
 //
 static int t_mouse_x = 0;
 static int t_mouse_y = 0;
+static bool  t_mouse_focus = false;
 
 
 enum Pane_change_type { CREATE , NEXT , PREV, TOGGLE_LABEL, EXPAND};
@@ -1613,6 +1614,19 @@ expandnode(NODE *n) /* Expand a node. */
 }
 
 static void
+mouse_focus_change() 
+{
+  if (t_mouse_focus) {
+     t_mouse_focus = false;
+     mousemask(0, NULL);
+  } else {
+     t_mouse_focus = true;
+     mousemask(BUTTON1_CLICKED, NULL);
+  }
+
+}
+
+static void
 mouse_event(NODE *n) 
 {
    MEVENT e;
@@ -1626,6 +1640,8 @@ mouse_event(NODE *n)
        focus(cn);
    }
    //focus(t_root[t_root_index]);
+   
+   //ungetmouse(&e);
 }
 
 static void 
@@ -1668,6 +1684,7 @@ handlechar(int r, int k) /* Handle a single input character. */
     DO(false, CODE(KEY_RIGHT),     sendarrow(n, "C"); SB);
     DO(false, CODE(KEY_LEFT),      sendarrow(n, "D"); SB);
     DO(false, CODE(KEY_HOME),      toggle_window_label())
+    //DO(false, CODE(KEY_MOUSE),     mouse_event(n);SENDN(n, r, 1))
     DO(false, CODE(KEY_MOUSE),     mouse_event(n))
     //DO(false, CODE(KEY_HOME),      SEND(n, "\033[1~"); SB)
     DO(false, CODE(KEY_END),       SEND(n, "\033[4~"); SB)
@@ -1676,14 +1693,15 @@ handlechar(int r, int k) /* Handle a single input character. */
     DO(false, CODE(KEY_BACKSPACE), SEND(n, "\177"); SB)
     DO(false, CODE(KEY_DC),        SEND(n, "\033[3~"); SB)
     DO(false, CODE(KEY_IC),        SEND(n, "\033[2~"); SB)
-    DO(false, CODE(KEY_BTAB),      SEND(n, "\033[Z"); SB)
-    DO(false, CODE(KEY_F(1)),      command_shell(n))
-    //DO(false, CODE(KEY_F(2)),      toggle_window_label())
+    //DO(false, CODE(KEY_BTAB),      SEND(n, "\033[Z"); SB)
+    DO(false, CODE(KEY_BTAB),      command_shell(n))
+    //DO(false, CODE(KEY_F(2)),      mouse_focus_change())
     //DO(false, CODE(KEY_F(1)),      SEND(n, "\033OP"); SB)
-    DO(false, CODE(KEY_F(2)),      SEND(n, "\033OQ"); SB)
+    //DO(false, CODE(KEY_F(2)),      SEND(n, "\033OQ"); SB)
     DO(false, CODE(KEY_F(3)),      SEND(n, "\033OR"); SB)
     DO(false, CODE(KEY_F(4)),      SEND(n, "\033OS"); SB)
-    DO(false, CODE(KEY_F(5)),      SEND(n, "\033[15~"); SB)
+    DO(false, CODE(KEY_F(1)),      mouse_focus_change())
+    //DO(false, CODE(KEY_F(5)),      SEND(n, "\033[15~"); SB)
     DO(false, CODE(KEY_F(6)),      SEND(n, "\033[17~"); SB)
     DO(false, CODE(KEY_F(7)),      SEND(n, "\033[18~"); SB)
     DO(false, CODE(KEY_F(8)),      SEND(n, "\033[19~"); SB)
@@ -2061,6 +2079,43 @@ run(void) /* Run MTM. */
     }
 }
 
+static NODE*
+append_pane()
+{
+  if (set_create_root_index())
+  {
+      t_root[t_root_index] = newview(NULL, 0, 0, LINES-1, COLS);
+      t_root[t_root_index]->type = ROOT;
+      t_root_enable[t_root_index] = 1;
+      return t_root[t_root_index];
+  }
+  return 0;
+
+}
+
+static void
+save_restore()
+{
+  split(t_root[0], HORIZONTAL);    // root
+  split(t_root[0]->c1, VERTICAL);  // root left
+  split(t_root[0]->c2, VERTICAL);  // root right
+  split(t_root[0]->c2->c1, HORIZONTAL);  // root right up
+
+  //t_root[1] = newview(NULL, 0, 0, LINES-1, COLS);
+ // t_root_enable[1] = 1;
+  //focus(t_root[1]);
+  //draw(t_root[1]);
+  //split(t_root[1], VERTICAL);  // root left
+   /*
+  NODE *pane1 = append_pane();
+  split(pane1, HORIZONTAL);    // root
+  split(pane1->c1, VERTICAL);  // root left
+  split(pane1->c2, VERTICAL);  // root right
+  split(pane1->c2->c1, HORIZONTAL);  // root right up
+*/
+  t_root_index = 0;
+
+}
 
 int
 main(int argc, char **argv)
@@ -2087,7 +2142,10 @@ main(int argc, char **argv)
     use_default_colors();
 
     keypad(stdscr, TRUE); // xtermでマウスイベントの取得に必要
-    mousemask(ALL_MOUSE_EVENTS, NULL);//マウスイベントを取得
+    //mousemask(ALL_MOUSE_EVENTS, NULL);//マウスイベントを取得
+    //mousemask(BUTTON1_PRESSED, NULL);//マウスイベントを取得
+    //mousemask(0, NULL);//マウスイベントを取得
+    //mousemask(BUTTON1_CLICKED, NULL);//マウスイベントを取得
 
     //init_pair(LINE_PAIR, COLOR_RED, COLOR_MAGENTA);
     init_pair(LINE_PAIR,                  COLOR_BLUE,  COLOR_BLACK);
@@ -2105,6 +2163,11 @@ main(int argc, char **argv)
             quit(EXIT_FAILURE, "could not open root window");
     t_root[t_root_index]->type = ROOT;
     t_root_enable[t_root_index] = 1;
+
+    //
+    //save_restore();
+    //
+
     focus(t_root[t_root_index]);
     draw(t_root[t_root_index]);
 
