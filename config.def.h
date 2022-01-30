@@ -60,10 +60,11 @@
 #define EXPAND_NODE KEY(L'x')
 
 /* The force redraw key. */
-#define REDRAW KEY(L'r')
+#define REDRAW KEY(L'w')
 
 /* panel control */
 #define CREATE_PANE KEY(L'c')
+#define RESTORE_PANE KEY(L'r')
 #define NEXT_PANE KEY(L'n')
 
 #define PANE_NEXT  CODE(KEY_NPAGE)

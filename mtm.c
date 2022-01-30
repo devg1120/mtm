@@ -35,6 +35,7 @@
 
 /*** CONFIGURATION */
 #include "config.h"
+#include "log.h"
 
 char *lineedit();
 
@@ -105,6 +106,9 @@ static NODE *focused, *lastfocused = NULL;
 static NODE *t_root[PANE_MAX] ;
 static int  t_root_enable[PANE_MAX] ;
 
+static int  t_fd_set[PANE_MAX];
+static int  t_fd_set_init_count = 0;
+
 static int   t_root_index = 0;
 static int   t_root_change = 0;
 static bool  window_label_show = false;
@@ -115,14 +119,15 @@ static int t_mouse_y = 0;
 static bool  t_mouse_focus = false;
 
 
-enum Pane_change_type { CREATE , NEXT , PREV, TOGGLE_LABEL, EXPAND};
+enum Pane_change_type { CREATE , RESTORE, NEXT , PREV, TOGGLE_LABEL, EXPAND};
 static enum Pane_change_type t_root_change_type;
 static NODE *t_expand_node;
 
 //#define root t_root[t_root_index]
 
-static int commandkey = CTL(COMMAND_KEY), nfds = 1; /* stdin */
+static int commandkey = CTL(COMMAND_KEY), nfds = 1, b_nfds; /* stdin */
 static fd_set fds;
+static fd_set b_fds;
 static char iobuf[BUFSIZ];
 
 static void setupevents(NODE *n);
@@ -927,6 +932,54 @@ newview(NODE *p, int y, int x, int h, int w) /* Open a new view. */
 }
 
 static NODE *
+newview2(NODE *p, int y, int x, int h, int w) /* Open a new view. */
+{
+    struct winsize ws = {.ws_row = h, .ws_col = w};
+    NODE *n = newnode(VIEW, p, y, x, h, w);
+    if (!n)
+        return NULL;
+
+    SCRN *pri = &n->pri, *alt = &n->alt;
+    pri->win = newpad(MAX(h, SCROLLBACK), w);
+    alt->win = newpad(h, w);
+    if (!pri->win || !alt->win)
+        return freenode(n, false), NULL;
+    pri->tos = pri->off = MAX(0, SCROLLBACK - h);
+    n->s = pri;
+
+    nodelay(pri->win, TRUE); nodelay(alt->win, TRUE);
+    scrollok(pri->win, TRUE); scrollok(alt->win, TRUE);
+    keypad(pri->win, TRUE); keypad(alt->win, TRUE);
+
+    setupevents(n);
+    ris(&n->vp, n, L'c', 0, 0, NULL, NULL);
+
+    pid_t pid = forkpty(&n->pt, NULL, NULL, &ws);
+    if (pid < 0){
+        if (!p)
+            perror("forkpty");
+        return freenode(n, false), NULL;
+    } else if (pid == 0){
+        char buf[100] = {0};
+        snprintf(buf, sizeof(buf) - 1, "%lu", (unsigned long)getppid());
+        setsid();
+        setenv("MTM", buf, 1);
+        setenv("TERM", getterm(), 1);
+        setenv("PS1", ">", 1);
+        signal(SIGCHLD, SIG_DFL);
+        execl(getshell(), getshell(), NULL);
+        //n->pid = getpid();
+        return NULL;
+    } else {
+	    n->pid = pid;
+    }
+
+    FD_SET(n->pt, &fds);
+    fcntl(n->pt, F_SETFL, O_NONBLOCK);
+    //nfds = n->pt > nfds? n->pt : nfds;
+    return n;
+}
+static NODE *
 newcontainer(Node t, NODE *p, int y, int x, int h, int w,
              NODE *c1, NODE *c2) /* Create a new container */
 {
@@ -1351,6 +1404,12 @@ create_pane()
   t_root_change_type = CREATE;
 }
 static void
+restore_pane()
+{
+  t_root_change = 1;
+  t_root_change_type = RESTORE;
+}
+static void
 next_pane()
 {
   t_root_change = 1;
@@ -1723,6 +1782,7 @@ handlechar(int r, int k) /* Handle a single input character. */
     DO(true,  EXPAND_NODE,         expandnode(n))
     DO(true,  REDRAW,              touchwin(stdscr); draw(t_root[t_root_index]); redrawwin(stdscr))
     DO(true,  CREATE_PANE,         create_pane())
+    DO(true,  RESTORE_PANE,        restore_pane())
     DO(true,  NEXT_PANE,           next_pane())
     DO(true,  PANE_NEXT,           next_pane())
     DO(true,  PANE_PREV,           prev_pane())
@@ -1868,11 +1928,36 @@ status_bar()
 	  default:         focused_node_type ="NONE";
   }
   //const char *right_string = "RIGHT TEST";
+/*
   if (window_label_show) {
      sprintf(right_string ,"%s * %s", focused_node_type , pane_led);
   } else {
      sprintf(right_string ,"%s   %s", focused_node_type , pane_led);
   }
+*/
+  /*
+  char *t_mouse_focus_true      = "M";
+  char *t_mouse_focus_false     = "-";
+  char *window_label_show_true  = "L"
+  char *window_label_show_false = "-"
+*/
+  char pin_mouse_focus = ' ';
+  char pin_window_label = ' ';
+
+  if (window_label_show) {
+       pin_window_label = 'L';
+  } else {
+       pin_window_label = '_';
+
+  }
+  if (t_mouse_focus) {
+       pin_mouse_focus = 'M';
+  } else {
+       pin_mouse_focus = '_';
+
+  }
+
+  sprintf(right_string ,"%s %c%c %s", focused_node_type ,pin_mouse_focus, pin_window_label, pane_led);
 
   int left_len   = strlen( left_string);
   int right_len  = strlen( right_string);
@@ -2092,34 +2177,127 @@ append_pane()
   return 0;
 
 }
+static void
+fd_set_print()
+{
+	char log[256];
+	int i = 0;
+
+	for ( i = 0 ; i < nfds ; i++) {
+            //FD_SET(n->pt, &fds);
+            if (FD_ISSET(i, &fds)) {
+		    log[i] = '1';
+	    } else {
+		    log[i] = '0';
+	    }
+
+	}
+    log[i] = '\0';
+LOG_PRINT("FD_SET:%s \n",log);
+
+}
+
+static void
+save_restore_next()
+{
+LOG_PRINT("nfds %d\n", nfds);
+fd_set_print();
+
+  split(t_root[t_root_index], VERTICAL);  // root left
+
+}
 
 static void
 save_restore()
 {
-  split(t_root[0], HORIZONTAL);    // root
-  split(t_root[0]->c1, VERTICAL);  // root left
-  split(t_root[0]->c2, VERTICAL);  // root right
-  split(t_root[0]->c2->c1, HORIZONTAL);  // root right up
+LOG_PRINT("nfds %d\n", nfds);
+fd_set_print();
+
+  split(t_root[0], HORIZONTAL);    //4 root 
+  split(t_root[0]->c1, VERTICAL);  //5 root left
+  split(t_root[0]->c2, VERTICAL);  //6 root right
+  split(t_root[0]->c2->c1, HORIZONTAL);  //7 root right up
+
+ //t_root[1] =  newview2(NULL, 0, 0, LINES-1, COLS);
+ //int _nfds = nfds;
+ //fd_set _fds = fds;
+//LOG_PRINT("init nfds %d\n", nfds);
 
   //t_root[1] = newview(NULL, 0, 0, LINES-1, COLS);
- // t_root_enable[1] = 1;
-  //focus(t_root[1]);
-  //draw(t_root[1]);
+  //t_root_enable[1] = 1;
+  //FD_CLR(4,&fds);
+
   //split(t_root[1], VERTICAL);  // root left
-   /*
-  NODE *pane1 = append_pane();
-  split(pane1, HORIZONTAL);    // root
-  split(pane1->c1, VERTICAL);  // root left
-  split(pane1->c2, VERTICAL);  // root right
-  split(pane1->c2->c1, HORIZONTAL);  // root right up
+  //FD_CLR(7,&fds);
+  //FD_CLR(8,&fds);
+  //t_fd_set[1] = 1;
+  //t_root[2] = newview(NULL, 0, 0, LINES-1, COLS);
+  //t_root_enable[2] = 1;
+  //FD_CLR(5,&fds);
+  //t_fd_set[2] = 1;
+
+  //t_root[3] = newview(NULL, 0, 0, LINES-1, COLS);
+  //t_root_enable[3] = 1;
+  //FD_CLR(6,&fds);
+  //t_fd_set[3] = 1;
+  //t_root[4] = newview(NULL, 0, 0, LINES-1, COLS);
+  //t_root_enable[4] = 1;
+  //FD_CLR(7,&fds);
+/*
+  split(t_root[1], VERTICAL);  // root left
+  split(t_root[0], HORIZONTAL);    //4 root 
+  split(t_root[0]->c1, VERTICAL);  //5 root left
+  split(t_root[0]->c2, VERTICAL);  //6 root right
+  split(t_root[0]->c2->c1, HORIZONTAL);  //7 root right up
 */
+ //int _nfds = nfds;
+ //  b_nfds = nfds;
+LOG_PRINT("nfds %d\n", nfds);
+fd_set_print();
+  //nfds = _nfds;
+
+  //NODE *pane1 = append_pane();
+  //split(pane1, HORIZONTAL);    // root
+  //split(pane1->c1, VERTICAL);  // root left
+  //split(pane1->c2, VERTICAL);  // root right
+  //split(pane1->c2->c1, HORIZONTAL);  // root right up
+
   t_root_index = 0;
 
 }
+/*
+     75 typedef	struct __fd_set {
+    76 #endif
+    77 	long	fds_bits[__howmany(FD_SETSIZE, FD_NFDBITS)];
+    78 } fd_set;  <typedef:fd_set>
+    79 
+    80 #define	FD_SET(__n, __p)	((__p)->fds_bits[(__n)/FD_NFDBITS] |= \
+    81 				    (1ul << ((__n) % FD_NFDBITS)))
+    82 
+    83 #define	FD_CLR(__n, __p)	((__p)->fds_bits[(__n)/FD_NFDBITS] &= \
+    84 				    ~(1ul << ((__n) % FD_NFDBITS)))
+    85 
+    86 #define	FD_ISSET(__n, __p)	(((__p)->fds_bits[(__n)/FD_NFDBITS] & \
+    87 				    (1ul << ((__n) % FD_NFDBITS))) != 0l)
+    88 
+    89 #ifdef _KERNEL
+    90 #define	FD_ZERO(p)	bzero((p), sizeof (*(p)))
+    91 #else
+    92 #define	FD_ZERO(__p)	memset((void *)(__p), 0, sizeof (*(__p)))
+    93 #endif 
+ 
+ 
+ * */
+
 
 int
 main(int argc, char **argv)
 {
+
+    LOG_PRINT(">>> %d TEST START !!! \n", 99);
+    ERR_LOG_PRINT(">>> %d err START %s !!! \n", 99, "abc");
+
+
     FD_SET(STDIN_FILENO, &fds);
     setlocale(LC_ALL, "");
     signal(SIGCHLD, SIG_IGN); /* automatically reap children */
@@ -2165,7 +2343,7 @@ main(int argc, char **argv)
     t_root_enable[t_root_index] = 1;
 
     //
-    //save_restore();
+    save_restore();
     //
 
     focus(t_root[t_root_index]);
@@ -2174,6 +2352,20 @@ main(int argc, char **argv)
     while(1) {
         run();
 	t_root_change = 0;
+
+//	nfds = b_nfds ;
+	//if (nfds < b_nfds) nfds++;
+
+	/*
+	t_fd_set_init_count++;
+	if (nfds < b_nfds) {
+                nfds = nfds + t_fd_set[t_fd_set_init_count];
+	}
+*/
+
+	
+	//nfds = b_nfds;
+
 	if (t_root_change_type == CREATE) {
 		int old_index = t_root_index;
 		if (set_create_root_index())
@@ -2186,9 +2378,30 @@ main(int argc, char **argv)
 		   }
                    t_root[t_root_index]->type = ROOT;
                    t_root_enable[t_root_index] = 1;
+
                    focus(t_root[t_root_index]);
                    draw(t_root[t_root_index]);
 		}
+
+	} else if (t_root_change_type == RESTORE) {
+		int old_index = t_root_index;
+		if (set_create_root_index())
+		{
+                   t_root[t_root_index] = newview(NULL, 0, 0, LINES-1, COLS);
+                   if (!t_root[t_root_index])
+		   {  
+		      t_root_index = old_index;
+                      continue;
+		   }
+                   t_root[t_root_index]->type = ROOT;
+                   t_root_enable[t_root_index] = 1;
+
+                save_restore_next();
+
+                   focus(t_root[t_root_index]);
+                   draw(t_root[t_root_index]);
+		}
+
 	} else if (t_root_change_type == NEXT) {
 		clear();
 		set_next_root_index();
