@@ -100,6 +100,7 @@ struct NODE{
 
 /*** GLOBALS AND PROTOTYPES */
 //static NODE *root, *focused, *lastfocused = NULL;
+static bool t_restore_mode = false;
 static NODE *focused, *lastfocused = NULL;
 //static NODE *root = NULL;
 #define PANE_MAX 10
@@ -883,8 +884,21 @@ getterm(void)
 }
 
 static NODE *
-newview(NODE *p, int y, int x, int h, int w) /* Open a new view. */
+//newview(NODE *p, int y, int x, int h, int w, ...) /* Open a new view. */
+newview(NODE *p, int y, int x, int h, int w, char *cwd, char *exe) /* Open a new view. */
 {
+	/*
+    char *cwd = NULL;
+    char *exe = NULL;
+
+    va_list args;
+    va_start( args, w );
+    cwd = va_arg( args, char* );
+    exe = va_arg( args, char* );
+    va_end( args );
+*/
+
+
     struct winsize ws = {.ws_row = h, .ws_col = w};
     NODE *n = newnode(VIEW, p, y, x, h, w);
     if (!n)
@@ -918,7 +932,13 @@ newview(NODE *p, int y, int x, int h, int w) /* Open a new view. */
         setenv("TERM", getterm(), 1);
         setenv("PS1", ">", 1);
         signal(SIGCHLD, SIG_DFL);
-        execl(getshell(), getshell(), NULL);
+	if ( cwd != NULL ) chdir(cwd);
+	//chdir("/");
+	if ( exe != NULL ){
+            execl(exe, exe, NULL);
+	} else {
+            execl(getshell(), getshell(), NULL);
+	}
         //n->pid = getpid();
         return NULL;
     } else {
@@ -1295,12 +1315,38 @@ draw(NODE *n) /* Draw a node. */
 
 
 static void
-split(NODE *n, Node t) /* Split a node. */
+//split(NODE *n, Node t, ...) /* Split a node. */
+split(NODE *n, Node t,char *cwd, char *exe) /* Split a node. */
 {
+	/*
+    char *cwd = NULL;
+    char *exe = NULL;
+
+    va_list args;
+    va_start( args, t );
+    cwd = va_arg( args, char* );
+    exe = va_arg( args, char* );
+    va_end( args );
+*/
+
+
     int nh = t == VERTICAL? (n->h - 1) / 2 : n->h;
     int nw = t == HORIZONTAL? (n->w) / 2 : n->w;
     NODE *p = n->p;
-    NODE *v = newview(NULL, 0, 0, MAX(0, nh), MAX(0, nw));
+/*
+    NODE *v ;
+    if ( cwd != NULL) {
+       if ( exe != NULL) {
+        v = newview(NULL, 0, 0, MAX(0, nh), MAX(0, nw), cwd, exe);
+       } else {
+        v = newview(NULL, 0, 0, MAX(0, nh), MAX(0, nw), cwd);
+       }
+    } else {
+        v = newview(NULL, 0, 0, MAX(0, nh), MAX(0, nw));
+    }
+    */
+    NODE *v = newview(NULL, 0, 0, MAX(0, nh), MAX(0, nw), cwd, exe);
+
     if (!v)
         return;
 
@@ -1774,8 +1820,8 @@ handlechar(int r, int k) /* Handle a single input character. */
     DO(true,  MOVE_LEFT,           focus(findnode(t_root[t_root_index], LEFT(n))))
     DO(true,  MOVE_RIGHT,          focus(findnode(t_root[t_root_index], RIGHT(n))))
     DO(true,  MOVE_OTHER,          focus(lastfocused))
-    DO(true,  HSPLIT,              split(n, HORIZONTAL))
-    DO(true,  VSPLIT,              split(n, VERTICAL))
+    DO(true,  HSPLIT,              split(n, HORIZONTAL,NULL,NULL))
+    DO(true,  VSPLIT,              split(n, VERTICAL,NULL,NULL))
 //    DO(true,  HFORK,               view_fork(n, HORIZONTAL))
 //    DO(true,  VFORK,               view_fork(n, VERTICAL))
     DO(true,  DELETE_NODE,         deletenode(n))
@@ -1890,6 +1936,7 @@ status_bar()
   char status[256];
   char left_string[256];
   char right_string[256];
+  char right_string2[256];
   char pane_led[256];
   char *focused_node_type;
 
@@ -1941,23 +1988,52 @@ status_bar()
   char *window_label_show_true  = "L"
   char *window_label_show_false = "-"
 */
-  char pin_mouse_focus = ' ';
+  char pin_restore_mode = ' ';
+  char pin_mouse_focus  = ' ';
   char pin_window_label = ' ';
 
+  char * fmt_r_0;
+  char * fmt_w_0;
+  char * fmt_m_0;
+  char * fmt_r_1;
+  char * fmt_w_1;
+  char * fmt_m_1;
+
+  if (t_restore_mode) {
+       pin_restore_mode = 'R';
+       fmt_r_1 = "\033[43m%c\033[44m";
+  } else {
+       pin_restore_mode = '_';
+       fmt_r_0 = "%c";
+  }
   if (window_label_show) {
        pin_window_label = 'L';
+       fmt_w_1 = "\033[43m%c\033[44m";
   } else {
        pin_window_label = '_';
-
+       fmt_w_0 = "%c";
   }
   if (t_mouse_focus) {
        pin_mouse_focus = 'M';
+       fmt_m_1 = "\033[43m%c\033[44m";
   } else {
        pin_mouse_focus = '_';
-
+       fmt_m_0 = "%c";
   }
 
-  sprintf(right_string ,"%s %c%c %s", focused_node_type ,pin_mouse_focus, pin_window_label, pane_led);
+  sprintf(right_string ,"%s %c%c%c %s", focused_node_type ,pin_restore_mode,
+		                                           pin_mouse_focus,
+							   pin_window_label,
+							   pane_led);
+
+  char string2_fmt[256];
+  sprintf(string2_fmt,"%s %s%s%s %s", "%s", fmt_r_1, fmt_w_0, fmt_m_0, "%s");
+  //sprintf(right_string2 ,"%s \033[43m%c\033[44m%c%c %s", focused_node_type ,pin_restore_mode,
+  //sprintf(right_string2 ,"%s %c%c%c %s", focused_node_type ,pin_restore_mode,
+  sprintf(right_string2 ,string2_fmt, focused_node_type ,pin_restore_mode,
+		                                           pin_mouse_focus,
+							   pin_window_label,
+							   pane_led);
 
   int left_len   = strlen( left_string);
   int right_len  = strlen( right_string);
@@ -1966,6 +2042,7 @@ status_bar()
   sprintf(cur_set ,"\033[%d;%dH", LINES, 0 );
   
   sprintf(format  ,"%s%d%s%d%s","\033[30m\033[44m%-", left_len, "s%", COLS - left_len ,"s\033[0m");
+  //sprintf(format  ,"%s%d%s%d%s","\033[30m\033[44m%-", left_len, "s%", COLS - left_len+right_len ,"s\033[0m");
   sprintf(format_expandroot  ,"%s%d%s%d%s","\033[30m\033[43m%-", left_len, "s%", COLS - left_len ,"s\033[0m");
 
 
@@ -2169,7 +2246,7 @@ append_pane()
 {
   if (set_create_root_index())
   {
-      t_root[t_root_index] = newview(NULL, 0, 0, LINES-1, COLS);
+      t_root[t_root_index] = newview(NULL, 0, 0, LINES-1, COLS,NULL,NULL);
       t_root[t_root_index]->type = ROOT;
       t_root_enable[t_root_index] = 1;
       return t_root[t_root_index];
@@ -2203,66 +2280,25 @@ save_restore_next()
 LOG_PRINT("nfds %d\n", nfds);
 fd_set_print();
 
-  split(t_root[t_root_index], VERTICAL);  // root left
+  split(t_root[t_root_index], VERTICAL,NULL,NULL);  // root left
 
 }
 
 static void
 save_restore()
 {
-LOG_PRINT("nfds %d\n", nfds);
-fd_set_print();
+    t_root[t_root_index] = newview(NULL, 0, 0, LINES-1, COLS, "/etc","/usr/bin/top");
+    if (!t_root[t_root_index])
+            quit(EXIT_FAILURE, "could not open root window");
+    t_root[t_root_index]->type = ROOT;
+    t_root_enable[t_root_index] = 1;
 
-  split(t_root[0], HORIZONTAL);    //4 root 
-  split(t_root[0]->c1, VERTICAL);  //5 root left
-  split(t_root[0]->c2, VERTICAL);  //6 root right
-  split(t_root[0]->c2->c1, HORIZONTAL);  //7 root right up
+    split(t_root[0], HORIZONTAL,"/",NULL);    //4 root 
+    split(t_root[0]->c1, VERTICAL,"/usr",NULL);  //5 root left
+    split(t_root[0]->c2, VERTICAL,NULL,NULL);  //6 root right
+    split(t_root[0]->c2->c1, HORIZONTAL, "/var/log",NULL);  //7 root right up
 
- //t_root[1] =  newview2(NULL, 0, 0, LINES-1, COLS);
- //int _nfds = nfds;
- //fd_set _fds = fds;
-//LOG_PRINT("init nfds %d\n", nfds);
-
-  //t_root[1] = newview(NULL, 0, 0, LINES-1, COLS);
-  //t_root_enable[1] = 1;
-  //FD_CLR(4,&fds);
-
-  //split(t_root[1], VERTICAL);  // root left
-  //FD_CLR(7,&fds);
-  //FD_CLR(8,&fds);
-  //t_fd_set[1] = 1;
-  //t_root[2] = newview(NULL, 0, 0, LINES-1, COLS);
-  //t_root_enable[2] = 1;
-  //FD_CLR(5,&fds);
-  //t_fd_set[2] = 1;
-
-  //t_root[3] = newview(NULL, 0, 0, LINES-1, COLS);
-  //t_root_enable[3] = 1;
-  //FD_CLR(6,&fds);
-  //t_fd_set[3] = 1;
-  //t_root[4] = newview(NULL, 0, 0, LINES-1, COLS);
-  //t_root_enable[4] = 1;
-  //FD_CLR(7,&fds);
-/*
-  split(t_root[1], VERTICAL);  // root left
-  split(t_root[0], HORIZONTAL);    //4 root 
-  split(t_root[0]->c1, VERTICAL);  //5 root left
-  split(t_root[0]->c2, VERTICAL);  //6 root right
-  split(t_root[0]->c2->c1, HORIZONTAL);  //7 root right up
-*/
- //int _nfds = nfds;
- //  b_nfds = nfds;
-LOG_PRINT("nfds %d\n", nfds);
-fd_set_print();
-  //nfds = _nfds;
-
-  //NODE *pane1 = append_pane();
-  //split(pane1, HORIZONTAL);    // root
-  //split(pane1->c1, VERTICAL);  // root left
-  //split(pane1->c2, VERTICAL);  // root right
-  //split(pane1->c2->c1, HORIZONTAL);  // root right up
-
-  t_root_index = 0;
+    t_root_index = 0;
 
 }
 /*
@@ -2303,7 +2339,8 @@ main(int argc, char **argv)
     signal(SIGCHLD, SIG_IGN); /* automatically reap children */
 
     int c = 0;
-    while ((c = getopt(argc, argv, "c:T:t:")) != -1) switch (c){
+    while ((c = getopt(argc, argv, "rc:T:t:")) != -1) switch (c){
+        case 'r': t_restore_mode = true;      break;
         case 'c': commandkey = CTL(optarg[0]);      break;
         case 'T': setenv("TERM", optarg, 1);        break;
         case 't': term = optarg;                    break;
@@ -2336,15 +2373,22 @@ main(int argc, char **argv)
         t_root_enable[n] = 0;
     }
 
-    t_root[t_root_index] = newview(NULL, 0, 0, LINES-1, COLS);
-    if (!t_root[t_root_index])
-            quit(EXIT_FAILURE, "could not open root window");
-    t_root[t_root_index]->type = ROOT;
-    t_root_enable[t_root_index] = 1;
+    //t_root[t_root_index] = newview(NULL, 0, 0, LINES-1, COLS, "/etc",NULL);
+    //if (!t_root[t_root_index])
+    //        quit(EXIT_FAILURE, "could not open root window");
+    //t_root[t_root_index]->type = ROOT;
+    //t_root_enable[t_root_index] = 1;
 
     //
-    save_restore();
-    //
+    if (t_restore_mode) {
+	    save_restore();
+    } else {
+       t_root[t_root_index] = newview(NULL, 0, 0, LINES-1, COLS, NULL,NULL);
+       if (!t_root[t_root_index])
+               quit(EXIT_FAILURE, "could not open root window");
+       t_root[t_root_index]->type = ROOT;
+       t_root_enable[t_root_index] = 1;
+    }
 
     focus(t_root[t_root_index]);
     draw(t_root[t_root_index]);
@@ -2354,7 +2398,9 @@ main(int argc, char **argv)
 	t_root_change = 0;
 
 //	nfds = b_nfds ;
-	//if (nfds < b_nfds) nfds++;
+	if (t_restore_mode) {
+		if (nfds < b_nfds) nfds++;
+	}
 
 	/*
 	t_fd_set_init_count++;
@@ -2370,7 +2416,7 @@ main(int argc, char **argv)
 		int old_index = t_root_index;
 		if (set_create_root_index())
 		{
-                   t_root[t_root_index] = newview(NULL, 0, 0, LINES-1, COLS);
+                   t_root[t_root_index] = newview(NULL, 0, 0, LINES-1, COLS,NULL,NULL);
                    if (!t_root[t_root_index])
 		   {  
 		      t_root_index = old_index;
@@ -2387,7 +2433,7 @@ main(int argc, char **argv)
 		int old_index = t_root_index;
 		if (set_create_root_index())
 		{
-                   t_root[t_root_index] = newview(NULL, 0, 0, LINES-1, COLS);
+                   t_root[t_root_index] = newview(NULL, 0, 0, LINES-1, COLS,NULL,NULL);
                    if (!t_root[t_root_index])
 		   {  
 		      t_root_index = old_index;
