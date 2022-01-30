@@ -935,9 +935,12 @@ newview(NODE *p, int y, int x, int h, int w, char *cwd, char *exe) /* Open a new
 	if ( cwd != NULL ) chdir(cwd);
 	//chdir("/");
 	if ( exe != NULL ){
-            execl(exe, exe, NULL);
+            //execl("/bin/bash","-i","-c", "nvim /etc/passwd" );
+            //execl("/bin/bash","-i","-c", "nvim _log.txt" );
+            execl("/bin/bash","-i","-c", exe );
 	} else {
-            execl(getshell(), getshell(), NULL);
+            //execl(getshell(), getshell(), NULL);
+            execl("/bin/bash", NULL);
 	}
         //n->pid = getpid();
         return NULL;
@@ -2287,7 +2290,9 @@ fd_set_print();
 static void
 save_restore()
 {
-    t_root[t_root_index] = newview(NULL, 0, 0, LINES-1, COLS, "/etc","/usr/bin/top");
+   //  bash -i -c "vi /etc/passwd"
+    //t_root[t_root_index] = newview(NULL, 0, 0, LINES-1, COLS, "/etc","/usr/bin/top");
+    t_root[t_root_index] = newview(NULL, 0, 0, LINES-1, COLS, "~/tmp/mtm","nvim _log.txt");
     if (!t_root[t_root_index])
             quit(EXIT_FAILURE, "could not open root window");
     t_root[t_root_index]->type = ROOT;
