@@ -11,7 +11,7 @@ LIBS      ?= -l$(CURSESLIB) -lutil
 all: mtm
 
 mtm: vtparser.c mtm.c pair.c config.h rawline.c lineedit.c readlink.c log.c
-	$(CC) $(CFLAGS) $(FEATURES) -o $@ $(HEADERS) vtparser.c mtm.c pair.c rawline.c lineedit.c readlink.c log.c $(LIBPATH) $(LIBS)
+	$(CC) $(CFLAGS) $(FEATURES) -o $@ $(HEADERS) vtparser.c mtm.c pair.c rawline.c lineedit.c readlink.c toml.c log.c $(LIBPATH) $(LIBS)
 	strip mtm
 
 config.h: config.def.h

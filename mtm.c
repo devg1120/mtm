@@ -37,6 +37,9 @@
 #include "config.h"
 #include "log.h"
 
+#include "toml.h"
+
+
 char *lineedit();
 
 int read_symlink(char *filepath, char *buf);
@@ -139,6 +142,7 @@ static const char *term = NULL;
 static void freenode(NODE *n, bool recursive);
 void start_pairs(void);
 short mtm_alloc_pair(int fg, int bg);
+static toml_table_t* restore_tab;
 
 /*** UTILITY FUNCTIONS */
 static void
@@ -937,7 +941,7 @@ newview(NODE *p, int y, int x, int h, int w, char *cwd, char *exe) /* Open a new
 	if ( exe != NULL ){
             //execl("/bin/bash","-i","-c", "nvim /etc/passwd" );
             //execl("/bin/bash","-i","-c", "nvim _log.txt" );
-            execl("/bin/bash","-i","-c", exe );
+            execl("/bin/bash","-login", "-i","-c", exe );
 	} else {
             //execl(getshell(), getshell(), NULL);
             execl("/bin/bash", NULL);
@@ -2218,6 +2222,7 @@ run(void) /* Run MTM. */
         status_bar();
     while (t_root[t_root_index]){
         //status_bar();
+        //LOG_PRINT("mtm loop  \n" );
         wint_t w = 0;
         fd_set sfds = fds;
         if (select(nfds + 1, &sfds, NULL, NULL, NULL) < 0)
@@ -2277,6 +2282,180 @@ LOG_PRINT("FD_SET:%s \n",log);
 
 }
 
+
+static void dfs_parse_node(toml_table_t* curtab, int lv)
+{
+    int i;
+    const char* key;
+    const char* raw;  
+    toml_array_t* arr;
+    toml_table_t* tab;
+    char *indent_fmt[256];
+    char *indent[256];
+    lv ++;
+    
+    sprintf(indent_fmt, "%s%d%s", "%-", lv*4 , "s");
+    sprintf(indent, indent_fmt," ");
+    //sprintf(indent, "%-10s"," ");
+
+    toml_datum_t direct = toml_string_in(curtab, "direct");
+    LOG_PRINT("%sdirect: %s\n", indent, direct.u.s);
+    
+    if ( 0 == strcmp( direct.u.s ,"VIEW") )
+    {
+       toml_datum_t cwd = toml_string_in(curtab, "cwd");
+       toml_datum_t exe = toml_string_in(curtab, "exe");
+       LOG_PRINT("%scwd: %s\n", indent,cwd.u.s);
+       LOG_PRINT("%sexe: %s\n", indent,exe.u.s);
+    }
+    arr = toml_array_in(curtab, "CHILD");
+    if (arr == 0 ) return;
+    for (i = 0; 0 != (tab = toml_table_at(arr, i)); i++) {
+        dfs_parse_node(tab , lv);
+    }
+}
+
+static void build_node_tree(toml_table_t* curtab, int lv)
+{
+    int i;
+    const char* key;
+    const char* raw;  
+    toml_array_t* arr;
+    toml_table_t* tab;
+    char *indent_fmt[256];
+    char *indent[256];
+    lv ++;
+    
+    sprintf(indent_fmt, "%s%d%s", "%-", lv*4 , "s");
+    sprintf(indent, indent_fmt," ");
+    //sprintf(indent, "%-10s"," ");
+
+    toml_datum_t direct = toml_string_in(curtab, "direct");
+    LOG_PRINT("%sdirect: %s\n", indent, direct.u.s);
+    
+    if ( 0 == strcmp( direct.u.s ,"VIEW") )
+    {
+       toml_datum_t cwd = toml_string_in(curtab, "cwd");
+       toml_datum_t exe = toml_string_in(curtab, "exe");
+       LOG_PRINT("%scwd: %s\n", indent,cwd.u.s);
+       LOG_PRINT("%sexe: %s\n", indent,exe.u.s);
+    }
+    arr = toml_array_in(curtab, "CHILD");
+    if (arr == 0 ) return;
+    for (i = 0; 0 != (tab = toml_table_at(arr, i)); i++) {
+        build_node_tree(tab , lv);
+    }
+}
+
+static void parse_table_at(toml_table_t* curtab, int i)
+{
+    const char* raw;
+    toml_array_t* arr;
+    toml_table_t* tab;
+
+    arr = toml_array_in(curtab, "ROOT");
+    tab = toml_table_at(arr, i);
+    toml_datum_t index = toml_int_in(tab, "index");
+    LOG_PRINT("ROOT index %d\n", (int)index.u.i);
+    dfs_parse_node(tab ,0);
+   // bfs_parse_node(tab ,0);
+    
+}
+
+static toml_table_t* sarch_node(toml_table_t* curtab, int lv)
+{
+    int i;
+    const char* key;
+    const char* raw;  
+    toml_array_t* arr;
+    toml_table_t* tab;
+    char *indent_fmt[256];
+    char *indent[256];
+    lv ++;
+    
+    sprintf(indent_fmt, "%s%d%s", "%-", lv*4 , "s");
+    sprintf(indent, indent_fmt," ");
+
+    toml_datum_t direct = toml_string_in(curtab, "direct");
+    //LOG_PRINT("%sdirect: %s\n", indent, direct.u.s);
+    
+    if ( 0 == strcmp( direct.u.s ,"VIEW") )
+    {
+       return curtab;
+       //toml_datum_t cwd = toml_string_in(curtab, "cwd");
+       //toml_datum_t exe = toml_string_in(curtab, "exe");
+       //LOG_PRINT("%scwd: %s\n", indent,cwd.u.s);
+       //LOG_PRINT("%sexe: %s\n", indent,exe.u.s);
+    }
+    arr = toml_array_in(curtab, "CHILD");
+    if (arr == 0 ) return NULL;
+    tab = toml_table_at(arr, 0);
+    if (tab == 0 ) return NULL;
+    return sarch_node(tab , lv);
+    //for (i = 0; 0 != (tab = toml_table_at(arr, i)); i++) {
+    //    serch_node(tab , lv);
+    //}
+}
+
+static void parse_table_s(toml_table_t* curtab, int i)
+{
+    const char* raw;
+    toml_array_t* arr;
+    toml_table_t* tab;
+
+    arr = toml_array_in(curtab, "ROOT");
+    tab = toml_table_at(arr, i);
+    toml_datum_t index = toml_int_in(tab, "index");
+
+    LOG_PRINT("ROOT index %d\n", (int)index.u.i);
+    //parse_node(tab ,0);
+    toml_datum_t direct = toml_string_in(tab, "direct");
+    LOG_PRINT("ROOT direct %s\n", direct.u.s);
+    arr = toml_array_in(tab, "CHILD");
+    toml_datum_t direct1 = toml_string_in(toml_table_at(arr,0), "direct");
+    toml_datum_t direct2 = toml_string_in(toml_table_at(arr,1), "direct");
+    LOG_PRINT("   CHILD direct1 %s\n", direct1.u.s);
+    LOG_PRINT("   CHILD direct2 %s\n", direct2.u.s);
+    toml_array_t* arr1 = toml_array_in(toml_table_at(arr,0), "CHILD");
+    toml_array_t* arr2 = toml_array_in(toml_table_at(arr,1), "CHILD");
+    toml_datum_t direct11 = toml_string_in(toml_table_at(arr1,0), "direct");
+    toml_datum_t direct12 = toml_string_in(toml_table_at(arr1,1), "direct");
+    LOG_PRINT("   CHILD direct11 %s\n", direct11.u.s);
+    LOG_PRINT("   CHILD direct12 %s\n", direct12.u.s);
+    toml_datum_t direct21 = toml_string_in(toml_table_at(arr2,0), "direct");
+    toml_datum_t direct22 = toml_string_in(toml_table_at(arr2,1), "direct");
+    LOG_PRINT("   CHILD direct21 %s\n", direct21.u.s);
+    LOG_PRINT("   CHILD direct22 %s\n", direct22.u.s);
+
+    // TODO
+    //   top2面に対してFirst VIEWをサーチ
+    //
+    //toml_table_t* view = sarch_node(tab,0);
+    arr = toml_array_in(tab, "CHILD");
+    toml_table_t* tab1 = toml_table_at(arr,0);
+
+    toml_table_t* view1 = sarch_node(tab1,0);
+
+    toml_datum_t lv1  = toml_int_in(view1, "lv");
+    toml_datum_t cwd1 = toml_string_in(view1, "cwd");
+    toml_datum_t exe1 = toml_string_in(view1, "exe");
+    LOG_PRINT("   lv  %d\n", lv1.u.i);
+    LOG_PRINT("   cwd %s\n", cwd1.u.s);
+    LOG_PRINT("   pwd %s\n", exe1.u.s);
+
+    toml_table_t* tab2 = toml_table_at(arr,1);
+    toml_table_t* view2 = sarch_node(tab2,0);
+
+    toml_datum_t lv2  = toml_int_in(view2, "lv");
+    toml_datum_t cwd2 = toml_string_in(view2, "cwd");
+    toml_datum_t exe2 = toml_string_in(view2, "exe");
+    LOG_PRINT("   lv  %d\n", lv2.u.i);
+    LOG_PRINT("   cwd %s\n", cwd2.u.s);
+    LOG_PRINT("   pwd %s\n", exe2.u.s);
+    
+}
+
+
 static void
 save_restore_next()
 {
@@ -2288,11 +2467,20 @@ fd_set_print();
 }
 
 static void
+save_restore_tab()
+{
+   //parse_table_at(restore_tab, 0);
+   parse_table_s(restore_tab, 0);
+}
+
+static void
 save_restore()
 {
    //  bash -i -c "vi /etc/passwd"
     //t_root[t_root_index] = newview(NULL, 0, 0, LINES-1, COLS, "/etc","/usr/bin/top");
     t_root[t_root_index] = newview(NULL, 0, 0, LINES-1, COLS, "~/tmp/mtm","nvim _log.txt");
+    //t_root[t_root_index] = newview(NULL, 0, 0, LINES-1, COLS, "~/tmp/mtm","tail -f  _log.txt");
+    //t_root[t_root_index] = newview(NULL, 0, 0, LINES-1, COLS, "~/tmp/mtm",NULL);
     if (!t_root[t_root_index])
             quit(EXIT_FAILURE, "could not open root window");
     t_root[t_root_index]->type = ROOT;
@@ -2300,7 +2488,7 @@ save_restore()
 
     split(t_root[0], HORIZONTAL,"/",NULL);    //4 root 
     split(t_root[0]->c1, VERTICAL,"/usr",NULL);  //5 root left
-    split(t_root[0]->c2, VERTICAL,NULL,NULL);  //6 root right
+    split(t_root[0]->c2, VERTICAL,NULL,"/usr/local/bin/fish");  //6 root right
     split(t_root[0]->c2->c1, HORIZONTAL, "/var/log",NULL);  //7 root right up
 
     t_root_index = 0;
@@ -2337,6 +2525,7 @@ main(int argc, char **argv)
 
     LOG_PRINT(">>> %d TEST START !!! \n", 99);
     ERR_LOG_PRINT(">>> %d err START %s !!! \n", 99, "abc");
+
 
 
     FD_SET(STDIN_FILENO, &fds);
@@ -2386,7 +2575,13 @@ main(int argc, char **argv)
 
     //
     if (t_restore_mode) {
+	     char  errbuf[200];
+	    FILE* fp = fopen("./mtm_test.toml", "r");
+            restore_tab = toml_parse_file(fp, errbuf, sizeof(errbuf));
+
+	    save_restore_tab();
 	    save_restore();
+
     } else {
        t_root[t_root_index] = newview(NULL, 0, 0, LINES-1, COLS, NULL,NULL);
        if (!t_root[t_root_index])

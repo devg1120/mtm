@@ -5,6 +5,7 @@
   Labels = [ 'MQTT_Protocol' ,'MODBUS_Protocol' ]
   StartupMsg = 'mqtt modbus device service started'
   CheckInterval = '10s'
+  port = [ 8080, 8181, 8282 ]
 
 [Clients]
   [Clients.Data]
