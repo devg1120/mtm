@@ -122,8 +122,10 @@ static int t_mouse_x = 0;
 static int t_mouse_y = 0;
 static bool  t_mouse_focus = false;
 
+static NODE * push_node = NULL;
+static NODE * save_node = NULL;
 
-enum Pane_change_type { CREATE , RESTORE, NEXT , PREV, TOGGLE_LABEL, EXPAND};
+enum Pane_change_type { CREATE , RESTORE, NEXT , PREV, TOGGLE_LABEL, EXPAND, SWAP, FETCH};
 static enum Pane_change_type t_root_change_type;
 static NODE *t_expand_node;
 
@@ -1190,9 +1192,10 @@ set_prev_root_index()
 static void
 deletenode(NODE *n) /* Delete a node. */
 {
-    FD_CLR(n->pt, &fds);
+    //FD_CLR(n->pt, &fds);
     if (n->type == ROOT)
     {
+         FD_CLR(n->pt, &fds);
 	 if ( n->p == NULL && n->c1 == NULL && n->c2 == NULL)
 	 //if ( n->c1 == NULL && n->c2 == NULL)
 	 {
@@ -1211,7 +1214,11 @@ deletenode(NODE *n) /* Delete a node. */
                freenode(n, true);
 	 }
 	 
+    //} else if (n->type == EXPANDROOT) {
     } else if (n->type == EXPANDROOT) {
+	    
+	       n->refcnt--;
+	       n->expand = false;
 	       root_delete(n);
 	       if (root_empty()) {
                    quit(EXIT_SUCCESS, NULL);
@@ -1220,7 +1227,9 @@ deletenode(NODE *n) /* Delete a node. */
                   t_root_change_type = NEXT;
 		  n->type = CHILD;
 	       }
+	       
     } else {
+         FD_CLR(n->pt, &fds);
          //if (!n || !n->p)
          //    quit(EXIT_SUCCESS, NULL);
          if (n == focused)
@@ -1230,6 +1239,24 @@ deletenode(NODE *n) /* Delete a node. */
     }
 }
 
+static void
+swapnode(NODE *n) /* Swap a node. */
+{
+     NODE *p = n->p;
+     if (n == p->c1 ){
+	     NODE *tmp = p->c1;
+	     p->c1 = p->c2;
+	     p->c2 = tmp;
+
+     } else if ( n == p->c2) {
+	     NODE *tmp = p->c2;
+	     p->c2 = p->c1;
+	     p->c1 = tmp;
+     }
+     t_root_change = 1;
+     t_root_change_type = SWAP;
+
+}
 static void
 reshapeview(NODE *n, int d, int ow) /* Reshape a view. */
 {
@@ -1336,7 +1363,7 @@ split(NODE *n, Node t,char *cwd, char *exe) /* Split a node. */
     va_end( args );
 */
 
-
+    n->type = CHILD;
     int nh = t == VERTICAL? (n->h - 1) / 2 : n->h;
     int nw = t == HORIZONTAL? (n->w) / 2 : n->w;
     NODE *p = n->p;
@@ -1357,6 +1384,11 @@ split(NODE *n, Node t,char *cwd, char *exe) /* Split a node. */
     if (!v)
         return;
 
+    //
+    //     c--------n
+    //        |
+    //        +-----v
+    //
     NODE *c = newcontainer(t, n->p, n->y, n->x, n->h, n->w, n, v);
     if (!c){
         freenode(v, false);
@@ -1480,7 +1512,7 @@ static void
 toggle_window_label()
 {
    window_label_show = !window_label_show;
-   //reshape(t_root[t_root_index], 0, 0, LINES-1, COLS);
+   reshape(t_root[t_root_index], 0, 0, LINES-1, COLS);
    //draw(t_root[t_root_index]);
   t_root_change = 1;
   t_root_change_type = TOGGLE_LABEL;
@@ -1725,6 +1757,125 @@ expandnode(NODE *n) /* Expand a node. */
 
 }
 
+NODE * get_root(NODE *n)
+{
+	if ( n->type == ROOT) {
+                LOG_PRINT("ROOT\n");
+		return n;
+	} else if (n->type == EXPANDROOT) {
+                LOG_PRINT("EXPANDROOT\n");
+		return n;
+	} else if (n->type == CHILD) {
+                LOG_PRINT("CHILD\n");
+		return get_root(n->p);
+        } else {
+                LOG_PRINT("other\n");
+		return n;
+	}
+
+}
+
+static  void
+dump_node(NODE *n, int level) {
+        //char  level_str[32];
+        char  indent_fmt[32];
+        char  indent[32];
+	sprintf(indent_fmt, "%s%d%s", "%",level*4, "s");
+	sprintf(indent, indent_fmt, "|");
+	level += 1;
+
+	if ( n->type == ROOT) {
+                LOG_PRINT("%s ROOT\n", indent);
+		//return n;
+	} else if (n->type == EXPANDROOT) {
+                LOG_PRINT("%s EXPANDROOT\n"), indent;
+		//return n;
+	} else if (n->type == CHILD) {
+                LOG_PRINT("%s CHILD\n", indent);
+		//return get_root(n->p);
+        } else {
+                LOG_PRINT("%s other\n", indent);
+		//return n;
+	}
+
+	if (n->c1 !=NULL) {
+		dump_node(n->c1, level);
+	}
+	if (n->c2 !=NULL) {
+		dump_node(n->c2, level);
+	}
+}
+
+static  void
+dump_tree() {
+    for ( int i =0 ; i < PANE_MAX ; i++) {
+        if (t_root_enable[i] > 0)
+	{
+            LOG_PRINT("index :%d\n", i);
+            //LOG_PRINT("root type :%d\n", t_root[i]->type);
+            dump_node(t_root[i], 1);
+
+
+	}
+    }
+}
+
+static 
+int get_root_index(NODE *n) /* Expand a node. */
+{
+    NODE * root = get_root(n);
+    int i = 0;
+    for ( int i =0 ; i < PANE_MAX ; i++) {
+        if (t_root[i] == root)
+	{
+	    return i;
+	}
+    }
+        return -1;
+}
+
+static void
+pushnode(NODE *n) /* Push a node. */
+{
+  LOG_PRINT("push node  \n");
+    push_node = n;
+}
+static void
+fetchnode(NODE *n) /* Fetch a node. */
+{
+
+  LOG_PRINT("fetch node  \n");
+  int root_index =  get_root_index(n);
+  LOG_PRINT("root index: %d\n", root_index);
+
+  if (push_node == NULL) return;
+
+  FD_CLR(n->pt, &fds);
+  NODE *p = n->p;
+
+  if (p->c1 == n) {
+	 save_node = p->c1;
+	 p->c1 = push_node;
+
+
+  } else if (p->c2 == n) {
+	 save_node = p->c2;
+	 p->c2 = push_node;
+
+  }
+
+	/*
+  n->refcnt++;
+  n->expand = true;
+  t_root_change = 1;
+  t_root_change_type = EXPAND;
+  t_expand_node = n;
+*/
+
+  t_root_change = 1;
+  t_root_change_type = FETCH;
+}
+
 static void
 mouse_focus_change() 
 {
@@ -1831,7 +1982,11 @@ handlechar(int r, int k) /* Handle a single input character. */
     DO(true,  VSPLIT,              split(n, VERTICAL,NULL,NULL))
 //    DO(true,  HFORK,               view_fork(n, HORIZONTAL))
 //    DO(true,  VFORK,               view_fork(n, VERTICAL))
+    DO(true,  DUMP_TREE,         dump_tree())
     DO(true,  DELETE_NODE,         deletenode(n))
+    DO(true,  SWAP_NODE,         swapnode(n))
+    DO(true,  FETCH_NODE,         fetchnode(n))
+    DO(true,  PUSH_NODE,         pushnode(n))
     DO(true,  EXPAND_NODE,         expandnode(n))
     DO(true,  REDRAW,              touchwin(stdscr); draw(t_root[t_root_index]); redrawwin(stdscr))
     DO(true,  CREATE_PANE,         create_pane())
@@ -2700,7 +2855,10 @@ main(int argc, char **argv)
                    draw(t_root[t_root_index]);
 
 		}
-
+	} else if (t_root_change_type == SWAP || t_root_change_type == FETCH) {
+                  NODE *n = t_root[t_root_index];
+                  reshape(n, n->y, n->x, n->h, n->w);
+                  draw(n);
 	}
     }
 

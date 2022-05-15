@@ -1,0 +1,85 @@
+TODO
+
+
+他PANELからのfetch
+# push
+ctl + g P
+              #pushnode(NODE *n) 
+
+# fetch
+ctl + g F
+              #fetchnode(NODE *n) 
+
+TODO
+  --不安定解消
+　−−reset
+  --multi push/fetch
+
+
+######################################
+
+
+dump tree
+ctl + g D
+       tail -f _log.txt
+
+
+=========================================
+mouse mode change     f1
+
+#command 
+ctl + g
+
+
+#window split
+ctl + g   h
+ctl + g   v
+
+#window focus change
+ctl + g  →
+         ←
+         ↓
+　　　　↑
+
+
+#dump tree
+ctl + g   D
+
+#window delete
+ctl + g   q
+
+#window swap
+ctl + g   w  (from self panel)
+
+#panel fetch
+ctl + g   f  (from other panel)
+
+#window expand    windowを全画面パネルへ/ 元のwindowは維持、　　TODO  閉じる機能
+ctl + g   x
+
+#window label toggle  shoe
+[HOME]
+ctl + g  l
+
+#panel create
+ctl + g   c
+#panel change
+ctl + g   n
+          p
+
+#panel restore
+ctl + g   r      機能不明
+
+
+
+
+# command shell
+ctl + g  s
+>>> $####       window label change
+
+
+#quit
+ctl + g   Q
+
+
+
